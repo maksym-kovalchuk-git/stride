@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { createClient } from '../../../shared/lib/supabase/client'
+import { createClient } from '@/shared/lib/supabase/client'
 
 export function SignOutButton() {
   const router = useRouter()
