@@ -25,8 +25,16 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Оновлює сесію (для валідності JWT)
-  await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const isProtectedRoute =
+    request.nextUrl.pathname.startsWith('/profile') ||
+    request.nextUrl.pathname.startsWith('/admin')
+
+  if (isProtectedRoute && !user) {
+    const redirectUrl = new URL('/login', request.url)
+    return NextResponse.redirect(redirectUrl)
+  }
 
   return response
 }
