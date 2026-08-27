@@ -1,10 +1,18 @@
 import { createClient } from '@/shared/lib/supabase/server'
 import type { ProductWithRelations } from '../model/types'
 
-export async function getProducts(): Promise<ProductWithRelations[]> {
+type GetProductsParams = {
+  categorySlug?: string
+  brandSlug?: string
+  search?: string
+  minPrice?: number
+  maxPrice?: number
+}
+
+export async function getProducts(params: GetProductsParams = {}): Promise<ProductWithRelations[]> {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('products')
     .select(`
       *,
@@ -15,10 +23,34 @@ export async function getProducts(): Promise<ProductWithRelations[]> {
     `)
     .eq('is_active', true)
 
+  if (params.search) {
+    query = query.ilike('name', `%${params.search}%`)
+  }
+
+  if (params.minPrice) {
+    query = query.gte('base_price', params.minPrice)
+  }
+
+  if (params.maxPrice) {
+    query = query.lte('base_price', params.maxPrice)
+  }
+
+  const { data, error } = await query
+
   if (error) {
     console.error('Error fetching products:', error)
     return []
   }
 
-  return data as ProductWithRelations[]
+  let result = data as ProductWithRelations[]
+
+  if (params.categorySlug) {
+    result = result.filter((p) => p.category.slug === params.categorySlug)
+  }
+
+  if (params.brandSlug) {
+    result = result.filter((p) => p.brand.slug === params.brandSlug)
+  }
+
+  return result
 }
