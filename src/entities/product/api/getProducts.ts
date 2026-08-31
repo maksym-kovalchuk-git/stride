@@ -10,6 +10,7 @@ type GetProductsParams = {
   size?: number
   color?: string
   season?: string
+  gender?: string
 }
 
 export async function getProducts(params: GetProductsParams = {}): Promise<ProductWithRelations[]> {
@@ -40,6 +41,10 @@ export async function getProducts(params: GetProductsParams = {}): Promise<Produ
 
   if (params.season) {
     query = query.eq('season', params.season)
+  }
+
+  if (params.gender) {
+    query = query.eq('gender', params.gender)
   }
 
   const { data, error } = await query
