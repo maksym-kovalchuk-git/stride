@@ -7,6 +7,9 @@ type GetProductsParams = {
   search?: string
   minPrice?: number
   maxPrice?: number
+  size?: number
+  color?: string
+  season?: string
 }
 
 export async function getProducts(params: GetProductsParams = {}): Promise<ProductWithRelations[]> {
@@ -35,6 +38,10 @@ export async function getProducts(params: GetProductsParams = {}): Promise<Produ
     query = query.lte('base_price', params.maxPrice)
   }
 
+  if (params.season) {
+    query = query.eq('season', params.season)
+  }
+
   const { data, error } = await query
 
   if (error) {
@@ -50,6 +57,18 @@ export async function getProducts(params: GetProductsParams = {}): Promise<Produ
 
   if (params.brandSlug) {
     result = result.filter((p) => p.brand.slug === params.brandSlug)
+  }
+
+  if (params.size) {
+    result = result.filter((p) =>
+      p.variants.some((v) => v.size === params.size && v.stock > 0)
+    )
+  }
+
+  if (params.color) {
+    result = result.filter((p) =>
+      p.variants.some((v) => v.color === params.color && v.stock > 0)
+    )
   }
 
   return result
