@@ -6,6 +6,8 @@ export type Product = {
   slug: string
   description: string | null
   base_price: number
+  material: string | null
+  season: Season | null
   is_active: boolean
   created_at: string
 }
@@ -39,6 +41,8 @@ export type Category = {
   name: string
   slug: string
 }
+
+export type Season = 'spring_summer' | 'demi_season' | 'winter' | 'all_season'
 
 export type ProductWithRelations = Product & {
   brand: Brand
