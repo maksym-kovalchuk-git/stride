@@ -1,13 +1,22 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import type { ProductVariant } from '@/entities/product/model/types'
+import { useDispatch } from 'react-redux'
+
+import type { ProductWithRelations } from '@/entities/product/model/types'
+
+import { addItem } from '@/features/add-to-cart/model/cartSlice'
 
 type VariantSelectorProps = {
-  variants: ProductVariant[]
+  product: ProductWithRelations
 }
 
-export function VariantSelector({ variants }: VariantSelectorProps) {
+
+
+export function VariantSelector({ product }: VariantSelectorProps) {
+  const variants = product.variants
+  const dispatch = useDispatch()
+
   const uniqueSizes = useMemo(
     () => [...new Set(variants.map((v) => v.size))].sort((a, b) => a - b),
     [variants]
@@ -43,9 +52,24 @@ export function VariantSelector({ variants }: VariantSelectorProps) {
     setSelectedSize(null)
   }
 
+  
+
   const handleAddToCart = () => {
     if (!selectedVariant) return
-    alert(`Додано: розмір ${selectedVariant.size}, колір ${selectedVariant.color}`)
+
+    const cartItem = {
+      variant_id: selectedVariant.id,
+      product_id: product.id,
+      name: product.name,
+      brand_name: product.brand.name,
+      image_url: product.images[0]?.url || '',
+      size: selectedVariant.size,
+      color: selectedVariant.color,
+      price: selectedVariant.price_override ?? product.base_price,
+      stock: selectedVariant.stock,
+    }
+
+    dispatch(addItem(cartItem))
   }
 
   return (
