@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/shared/lib/supabase/server'
 import { SignOutButton } from '@/features/auth-by-email/ui/SignOutButton'
+import { CartCounter } from '@/features/add-to-cart/ui/CartCounter'
 
 export async function Header() {
   const supabase = await createClient()
@@ -8,10 +9,16 @@ export async function Header() {
 
   return (
     <header>
-      <div>
+      <div className="flex gap-4 items-center">
         <Link href="/">
           Stride
         </Link>
+
+        <Link href="/catalog">
+          Каталог
+        </Link>
+
+        <CartCounter /> 
 
         {user ? (
           <>
@@ -21,7 +28,6 @@ export async function Header() {
         ) : (
           <Link href="/login">Увійти</Link>
         )}
-
       </div>
     </header>
   )

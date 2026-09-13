@@ -47,7 +47,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
           {product.base_price} грн
         </p>
 
-        <VariantSelector variants={product.variants} />
+        <VariantSelector product={product} />
 
         {/* Таблиця характеристик */}
         <table style={{ width: '100%', marginTop: 24, borderCollapse: 'collapse' }}>
