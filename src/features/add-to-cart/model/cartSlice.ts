@@ -5,7 +5,7 @@ export type CartState = {
   items: CartItem[]
 }
 
-const MAX_QUANTITY = 10
+export const MAX_QUANTITY = 10
 
 function isAddable(item: CartItem): boolean {
   return item.quantity < item.stock && item.quantity < MAX_QUANTITY
@@ -52,9 +52,13 @@ const cartSlice = createSlice({
 
     clearCart: (state) => {
       state.items = []
-    }
+    },
+
+    hydrateCart: (state, action: PayloadAction<CartItem[]>) => {
+      state.items = action.payload
+    },
   },
 })
 
-export const { addItem, increaseQuantity, decreaseQuantity, removeItem, clearCart } = cartSlice.actions
+export const { addItem, increaseQuantity, decreaseQuantity, removeItem, clearCart, hydrateCart } = cartSlice.actions
 export default cartSlice.reducer
