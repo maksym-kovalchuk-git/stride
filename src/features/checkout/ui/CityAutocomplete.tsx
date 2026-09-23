@@ -49,6 +49,7 @@ export function CityAutocomplete({ value, onChange, onSelect }: CityAutocomplete
   return (
     <>
       <input
+        style={{ width: '100%', border: '1px solid #ccc', borderRadius: '4px' }}
         value={value}
         onFocus={() => setIsFocused(true)}
         onBlur={() => {

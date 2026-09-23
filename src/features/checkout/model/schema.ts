@@ -8,3 +8,5 @@ export const schema = z.object({
   cityRef: z.string().min(1, 'Виберіть місто'),
   warehouseRef: z.string().min(1, 'Виберіть відділення'),
 })
+
+export type CheckoutFormData = z.infer<typeof schema>

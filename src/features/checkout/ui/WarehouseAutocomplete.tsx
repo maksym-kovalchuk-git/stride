@@ -16,8 +16,8 @@ export function WarehouseAutocomplete({ cityRef, value, onChange, onSelect }: Wa
   const debouncedValue = useDebounce(value, 300)
 
   const warehousesToShow = debouncedValue
-  ? data.filter((w) => w.description.toLowerCase().includes(debouncedValue.toLowerCase()))
-  : data
+    ? data.filter((w) => w.description.toLowerCase().includes(debouncedValue.toLowerCase()))
+    : data
 
   const handleSearchWarehouse = async (cityRef: string) => {
     try {
@@ -38,7 +38,6 @@ export function WarehouseAutocomplete({ cityRef, value, onChange, onSelect }: Wa
   const handleSelectWarehouse = (warehouse: Warehouse) => {
     onChange(warehouse.description)
     onSelect(warehouse)
-    setData([])
   }
 
   useEffect(() => {
@@ -50,11 +49,16 @@ export function WarehouseAutocomplete({ cityRef, value, onChange, onSelect }: Wa
   return (
     <>
       <input
+        style={{ width: '100%', border: '1px solid #ccc', borderRadius: '4px' }}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={!cityRef}
         onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
+        onBlur={() => {
+          setTimeout(() => {
+            setIsFocused(false)
+          }, 150)
+        }}
       />
 
       {isFocused && warehousesToShow.length > 0 && (
