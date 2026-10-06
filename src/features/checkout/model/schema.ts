@@ -10,3 +10,18 @@ export const schema = z.object({
 })
 
 export type CheckoutFormData = z.infer<typeof schema>
+
+export const orderItemSchema = z.object({
+  variant_id: z.uuid(),
+  quantity: z.int().min(1).max(20),
+})
+
+export const createOrderSchema = z.object({
+  formData: schema,
+  cityName: z.string().min(1).max(200),
+  warehouseName: z.string().min(1).max(300),
+  items: z.array(orderItemSchema).min(1).max(50),
+})
+
+export type OrderItemInput = z.infer<typeof orderItemSchema>
+export type CreateOrderInput = z.infer<typeof createOrderSchema>

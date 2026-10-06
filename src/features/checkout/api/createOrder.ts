@@ -1,19 +1,73 @@
 import { createAdminClient } from '@/shared/lib/supabase/admin'
+import { getVariantPrice } from '@/entities/product/model/getVariantPrice'
 
-import type { CheckoutFormData } from '../model/schema'
-import { CartItem } from '@/features/add-to-cart/model/types'
+import type { CheckoutFormData, OrderItemInput } from '../model/schema'
 
 type CreateOrderParams = {
   formData: CheckoutFormData
   cityName: string
   warehouseName: string
-  cartItems: CartItem[]
+  items: OrderItemInput[]
   userId: string | null
-  totalAmount: number
 }
 
-export async function createOrder(orderData: CreateOrderParams): Promise<{ orderId: string }> {
+type VariantRow = {
+  id: string
+  price_override: number | null
+  stock: number
+  product: { base_price: number; is_active: boolean } | null
+}
+
+// Помилки, спричинені даними клієнта (немає варіанта, не вистачає залишку) — віддаються як 400
+export class OrderValidationError extends Error {}
+
+export async function createOrder(orderData: CreateOrderParams): Promise<{ orderId: string; totalAmount: number }> {
   const supabase = createAdminClient()
+
+  // Один варіант може прийти кількома рядками — зводимо в одну позицію
+  const quantities = new Map<string, number>()
+  for (const item of orderData.items) {
+    quantities.set(item.variant_id, (quantities.get(item.variant_id) ?? 0) + item.quantity)
+  }
+  const variantIds = [...quantities.keys()]
+
+  const { data: variants, error: variantsError } = await supabase
+    .from('product_variants')
+    .select('id, price_override, stock, product:products(base_price, is_active)')
+    .in('id', variantIds)
+    .overrideTypes<VariantRow[], { merge: false }>()
+
+  if (variantsError) {
+    console.error('Error fetching variants:', variantsError)
+    throw new Error('Failed to fetch variants')
+  }
+
+  const variantsById = new Map(variants.map((v) => [v.id, v]))
+
+  // Рахуємо в копійках, щоб уникнути похибок float
+  let totalKopecks = 0
+  const orderItems = variantIds.map((variantId) => {
+    const variant = variantsById.get(variantId)
+    const quantity = quantities.get(variantId)!
+
+    if (!variant || !variant.product || !variant.product.is_active) {
+      throw new OrderValidationError(`Variant ${variantId} is not available`)
+    }
+    if (variant.stock < quantity) {
+      throw new OrderValidationError(`Not enough stock for variant ${variantId}`)
+    }
+
+    const priceKopecks = Math.round(Number(getVariantPrice(variant, variant.product)) * 100)
+    totalKopecks += priceKopecks * quantity
+
+    return {
+      variant_id: variantId,
+      quantity,
+      price_at_purchase: priceKopecks / 100,
+    }
+  })
+
+  const totalAmount = totalKopecks / 100
 
   const { data: addressData, error: addressError } = await supabase
   .from('addresses')
@@ -39,7 +93,7 @@ export async function createOrder(orderData: CreateOrderParams): Promise<{ order
     user_id: orderData.userId,
     address_id: addressData.id,
     status: 'pending',
-    total_amount: orderData.totalAmount,
+    total_amount: totalAmount,
   })
   .select()
   .single()
@@ -49,24 +103,14 @@ export async function createOrder(orderData: CreateOrderParams): Promise<{ order
     throw new Error('Failed to create order')
   }
 
-  const { data: orderItemsData, error: itemsError } = await supabase
+  const { error: itemsError } = await supabase
     .from('order_items')
-    .insert(
-      orderData.cartItems.map((item) => ({
-        order_id: order.id,
-        variant_id: item.variant_id,
-        quantity: item.quantity,
-        price_at_purchase: item.price,
-      }))
-    )
+    .insert(orderItems.map((item) => ({ order_id: order.id, ...item })))
 
   if (itemsError) {
     console.error('Error creating order items:', itemsError)
     throw new Error('Failed to create order items')
   }
 
-  console.log('Order created successfully:', order)
-  return { orderId: order.id }
-  }
-
-  
+  return { orderId: order.id, totalAmount }
+}
