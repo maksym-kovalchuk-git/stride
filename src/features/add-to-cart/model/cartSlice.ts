@@ -1,11 +1,12 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import type { CartItem } from './types'
+import { MAX_QUANTITY } from './constants'
+
+export { MAX_QUANTITY }
 
 export type CartState = {
   items: CartItem[]
 }
-
-export const MAX_QUANTITY = 10
 
 function isAddable(item: CartItem): boolean {
   return item.quantity < item.stock && item.quantity < MAX_QUANTITY

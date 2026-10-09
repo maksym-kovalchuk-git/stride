@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/shared/lib/supabase/admin'
 import { getVariantPrice } from '@/entities/product/model/getVariantPrice'
+import { MAX_QUANTITY } from '@/features/add-to-cart/model/constants'
 
 import type { CheckoutFormData, OrderItemInput } from '../model/schema'
 
@@ -53,11 +54,15 @@ export async function createOrder(orderData: CreateOrderParams): Promise<{ order
     if (!variant || !variant.product || !variant.product.is_active) {
       throw new OrderValidationError(`Variant ${variantId} is not available`)
     }
+    // Zod обмежує лише окремий рядок — сума злитих рядків може перевищити ліміт
+    if (quantity > MAX_QUANTITY) {
+      throw new OrderValidationError(`Quantity for variant ${variantId} exceeds ${MAX_QUANTITY}`)
+    }
     if (variant.stock < quantity) {
       throw new OrderValidationError(`Not enough stock for variant ${variantId}`)
     }
 
-    const priceKopecks = Math.round(Number(getVariantPrice(variant, variant.product)) * 100)
+    const priceKopecks = Math.round(getVariantPrice(variant, variant.product) * 100)
     totalKopecks += priceKopecks * quantity
 
     return {
@@ -69,10 +74,16 @@ export async function createOrder(orderData: CreateOrderParams): Promise<{ order
 
   const totalAmount = totalKopecks / 100
 
+  // Накладений платіж не чекає LiqPay — одразу в обробку
+  const status = orderData.formData.paymentMethod === 'after_delivery' ? 'processing' : 'pending'
+
+  // TODO: transaction
   const { data: addressData, error: addressError } = await supabase
   .from('addresses')
   .insert({
     user_id: orderData.userId,
+    recipient_first_name: orderData.formData.firstName,
+    recipient_last_name: orderData.formData.lastName,
     phone: orderData.formData.phone,
     np_city_ref: orderData.formData.cityRef,
     np_city_name: orderData.cityName,
@@ -92,7 +103,8 @@ export async function createOrder(orderData: CreateOrderParams): Promise<{ order
   .insert({
     user_id: orderData.userId,
     address_id: addressData.id,
-    status: 'pending',
+    status,
+    payment_method: orderData.formData.paymentMethod,
     total_amount: totalAmount,
   })
   .select()

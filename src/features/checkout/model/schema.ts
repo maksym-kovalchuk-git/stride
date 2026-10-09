@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { MAX_QUANTITY } from '@/features/add-to-cart/model/constants'
+
 export const schema = z.object({
   firstName: z.string().min(2, "Введіть ім'я").max(50, "Максимальна довжина імені - 50 символів"),
   lastName: z.string().min(2, "Введіть прізвище").max(50, "Максимальна довжина прізвища - 50 символів"),
@@ -13,7 +15,8 @@ export type CheckoutFormData = z.infer<typeof schema>
 
 export const orderItemSchema = z.object({
   variant_id: z.uuid(),
-  quantity: z.int().min(1).max(20),
+  // Межа на рядок; сума по одному variant_id після злиття перевіряється в createOrder
+  quantity: z.int().min(1).max(MAX_QUANTITY),
 })
 
 export const createOrderSchema = z.object({
