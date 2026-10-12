@@ -1,5 +1,4 @@
 import { createAdminClient } from '@/shared/lib/supabase/admin'
-import { getVariantPrice } from '@/entities/product/model/getVariantPrice'
 import { MAX_QUANTITY } from '@/features/add-to-cart/model/constants'
 
 import type { CheckoutFormData, OrderItemInput } from '../model/schema'
@@ -12,117 +11,51 @@ type CreateOrderParams = {
   userId: string | null
 }
 
-type VariantRow = {
-  id: string
-  price_override: number | null
-  stock: number
-  product: { base_price: number; is_active: boolean } | null
+type CreateOrderRow = {
+  order_id: string
+  total_amount: number
 }
 
-// Помилки, спричинені даними клієнта (немає варіанта, не вистачає залишку) — віддаються як 400
+// Коди з raise exception у create_order, спричинені даними клієнта — віддаються як 400.
+// Решта (empty_order, invalid_item, ...) означає баг у нашому коді — 500.
+const CLIENT_ERROR_CODES = ['variant_unavailable', 'out_of_stock', 'quantity_limit']
+
 export class OrderValidationError extends Error {}
 
 export async function createOrder(orderData: CreateOrderParams): Promise<{ orderId: string; totalAmount: number }> {
   const supabase = createAdminClient()
+  const { formData } = orderData
 
-  // Один варіант може прийти кількома рядками — зводимо в одну позицію
-  const quantities = new Map<string, number>()
-  for (const item of orderData.items) {
-    quantities.set(item.variant_id, (quantities.get(item.variant_id) ?? 0) + item.quantity)
-  }
-  const variantIds = [...quantities.keys()]
+  // Злиття дублікатів, перевірки, ціни, списання залишку й транзакція — у create_order (0007)
+  const { data, error } = await supabase
+    .rpc('create_order', {
+      p_user_id: orderData.userId,
+      p_items: orderData.items,
+      p_max_quantity: MAX_QUANTITY,
+      p_payment_method: formData.paymentMethod,
+      p_recipient_first_name: formData.firstName,
+      p_recipient_last_name: formData.lastName,
+      p_phone: formData.phone,
+      p_np_city_ref: formData.cityRef,
+      p_np_city_name: orderData.cityName,
+      p_np_branch_ref: formData.warehouseRef,
+      p_np_branch_name: orderData.warehouseName,
+    })
 
-  const { data: variants, error: variantsError } = await supabase
-    .from('product_variants')
-    .select('id, price_override, stock, product:products(base_price, is_active)')
-    .in('id', variantIds)
-    .overrideTypes<VariantRow[], { merge: false }>()
-
-  if (variantsError) {
-    console.error('Error fetching variants:', variantsError)
-    throw new Error('Failed to fetch variants')
-  }
-
-  const variantsById = new Map(variants.map((v) => [v.id, v]))
-
-  // Рахуємо в копійках, щоб уникнути похибок float
-  let totalKopecks = 0
-  const orderItems = variantIds.map((variantId) => {
-    const variant = variantsById.get(variantId)
-    const quantity = quantities.get(variantId)!
-
-    if (!variant || !variant.product || !variant.product.is_active) {
-      throw new OrderValidationError(`Variant ${variantId} is not available`)
+  if (error) {
+    if (CLIENT_ERROR_CODES.includes(error.message)) {
+      throw new OrderValidationError(error.message)
     }
-    // Zod обмежує лише окремий рядок — сума злитих рядків може перевищити ліміт
-    if (quantity > MAX_QUANTITY) {
-      throw new OrderValidationError(`Quantity for variant ${variantId} exceeds ${MAX_QUANTITY}`)
-    }
-    if (variant.stock < quantity) {
-      throw new OrderValidationError(`Not enough stock for variant ${variantId}`)
-    }
-
-    const priceKopecks = Math.round(getVariantPrice(variant, variant.product) * 100)
-    totalKopecks += priceKopecks * quantity
-
-    return {
-      variant_id: variantId,
-      quantity,
-      price_at_purchase: priceKopecks / 100,
-    }
-  })
-
-  const totalAmount = totalKopecks / 100
-
-  // Накладений платіж не чекає LiqPay — одразу в обробку
-  const status = orderData.formData.paymentMethod === 'after_delivery' ? 'processing' : 'pending'
-
-  // TODO: transaction
-  const { data: addressData, error: addressError } = await supabase
-  .from('addresses')
-  .insert({
-    user_id: orderData.userId,
-    recipient_first_name: orderData.formData.firstName,
-    recipient_last_name: orderData.formData.lastName,
-    phone: orderData.formData.phone,
-    np_city_ref: orderData.formData.cityRef,
-    np_city_name: orderData.cityName,
-    np_branch_ref: orderData.formData.warehouseRef,
-    np_branch_name: orderData.warehouseName,
-  })
-  .select()
-  .single()
-
-  if (addressError) {
-    console.error('Error creating address:', addressError)
-    throw new Error('Failed to create address')
-  }
-
-  const { data: order, error: orderError } = await supabase
-  .from('orders')
-  .insert({
-    user_id: orderData.userId,
-    address_id: addressData.id,
-    status,
-    payment_method: orderData.formData.paymentMethod,
-    total_amount: totalAmount,
-  })
-  .select()
-  .single()
-
-  if (orderError) {
-    console.error('Error creating order:', orderError)
+    console.error('Error creating order:', error)
     throw new Error('Failed to create order')
   }
 
-  const { error: itemsError } = await supabase
-    .from('order_items')
-    .insert(orderItems.map((item) => ({ order_id: order.id, ...item })))
-
-  if (itemsError) {
-    console.error('Error creating order items:', itemsError)
-    throw new Error('Failed to create order items')
+  // returns table → масив рядків; клієнт без типів БД цього не знає, тож приводимо явно
+  const rows = data as CreateOrderRow[] | null
+  const row = rows?.[0]
+  if (!row) {
+    throw new Error('create_order returned no rows')
   }
 
-  return { orderId: order.id, totalAmount }
+  return { orderId: row.order_id, totalAmount: Number(row.total_amount) }
 }
