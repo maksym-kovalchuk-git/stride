@@ -20,6 +20,8 @@ export const orderItemSchema = z.object({
 })
 
 export const createOrderSchema = z.object({
+  // Один UUID на спробу оформлення — повтор з ним повертає те саме замовлення
+  idempotencyKey: z.uuid(),
   formData: schema,
   cityName: z.string().min(1).max(200),
   warehouseName: z.string().min(1).max(300),

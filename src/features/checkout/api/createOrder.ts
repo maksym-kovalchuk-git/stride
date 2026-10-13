@@ -4,6 +4,7 @@ import { MAX_QUANTITY } from '@/features/add-to-cart/model/constants'
 import type { CheckoutFormData, OrderItemInput } from '../model/schema'
 
 type CreateOrderParams = {
+  idempotencyKey: string
   formData: CheckoutFormData
   cityName: string
   warehouseName: string
@@ -16,20 +17,30 @@ type CreateOrderRow = {
   total_amount: number
 }
 
-// Коди з raise exception у create_order, спричинені даними клієнта — віддаються як 400.
-// Решта (empty_order, invalid_item, ...) означає баг у нашому коді — 500.
-const CLIENT_ERROR_CODES = ['variant_unavailable', 'out_of_stock', 'quantity_limit']
+// Коди з raise exception у create_order, спричинені даними клієнта, і їхній HTTP-статус.
+// Решта (empty_order, invalid_item, missing_idempotency_key, ...) означає баг у нашому коді — 500.
+const CLIENT_ERROR_STATUS: Record<string, 400 | 409> = {
+  variant_unavailable: 400,
+  out_of_stock: 400,
+  quantity_limit: 400,
+  idempotency_conflict: 409,
+}
 
-export class OrderValidationError extends Error {}
+export class OrderValidationError extends Error {
+  constructor(code: string, readonly status: 400 | 409) {
+    super(code)
+  }
+}
 
 export async function createOrder(orderData: CreateOrderParams): Promise<{ orderId: string; totalAmount: number }> {
   const supabase = createAdminClient()
   const { formData } = orderData
 
-  // Злиття дублікатів, перевірки, ціни, списання залишку й транзакція — у create_order (0007)
+  // Злиття дублікатів, перевірки, ціни, списання залишку й транзакція — у create_order (0008)
   const { data, error } = await supabase
     .rpc('create_order', {
       p_user_id: orderData.userId,
+      p_idempotency_key: orderData.idempotencyKey,
       p_items: orderData.items,
       p_max_quantity: MAX_QUANTITY,
       p_payment_method: formData.paymentMethod,
@@ -43,8 +54,9 @@ export async function createOrder(orderData: CreateOrderParams): Promise<{ order
     })
 
   if (error) {
-    if (CLIENT_ERROR_CODES.includes(error.message)) {
-      throw new OrderValidationError(error.message)
+    // hasOwn — щоб не зачепити прототипні ключі на кшталт constructor
+    if (Object.hasOwn(CLIENT_ERROR_STATUS, error.message)) {
+      throw new OrderValidationError(error.message, CLIENT_ERROR_STATUS[error.message])
     }
     console.error('Error creating order:', error)
     throw new Error('Failed to create order')
