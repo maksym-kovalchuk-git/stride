@@ -22,7 +22,10 @@ export async function POST(request: Request) {
 
   try {
     const result = await createOrder({ ...parsed.data, userId: user?.id ?? null })
-    return NextResponse.json(result)
+    // Що робити далі, вирішує сервер; клієнт лише виконує.
+    // Та сама відповідність paymentMethod → статус є в create_order (0007) — змінювати разом
+    const nextStep = parsed.data.formData.paymentMethod === 'card_online' ? 'pay' : 'success'
+    return NextResponse.json({ ...result, nextStep })
   } catch (error) {
     if (error instanceof OrderValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 })

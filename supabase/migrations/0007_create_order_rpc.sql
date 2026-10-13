@@ -122,7 +122,8 @@ begin
     raise exception 'out_of_stock';
   end if;
 
-  -- Статус визначає функція, а не клієнт: накладений платіж не чекає LiqPay
+  -- Статус визначає функція, а не клієнт: накладений платіж не чекає LiqPay.
+  -- Та сама відповідність є в nextStep у route.ts — змінювати разом
   v_status := case p_payment_method when 'after_delivery' then 'processing' else 'pending' end;
 
   -- 5. Адреса, замовлення, позиції
