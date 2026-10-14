@@ -1,5 +1,5 @@
 import "./globals.css";
-import { StoreProvider } from "@/shared/store/StoreProvider";
+import { StoreProvider } from "./_providers/StoreProvider";
 import { Header } from "@/widgets/header/ui/Header";
 import { AppToaster } from "@/shared/ui/AppToaster";
 

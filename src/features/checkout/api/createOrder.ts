@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/shared/lib/supabase/admin'
-import { MAX_QUANTITY } from '@/features/add-to-cart/model/constants'
+import { MAX_QUANTITY } from '@/shared/config/cart'
 
 import type { CheckoutFormData, OrderItemInput } from '../model/schema'
 

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { MAX_QUANTITY } from '@/features/add-to-cart/model/constants'
+import { MAX_QUANTITY } from '@/shared/config/cart'
 
 export const schema = z.object({
   firstName: z.string().min(2, "Введіть ім'я").max(50, "Максимальна довжина імені - 50 символів"),

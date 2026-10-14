@@ -9,13 +9,12 @@ import toast from 'react-hot-toast'
 
 import { schema } from '../model/schema'
 import { getOrderErrorMessage, DEFAULT_ORDER_ERROR } from '../model/orderErrors'
-import { clearCart } from '@/features/add-to-cart/model/cartSlice'
+import { clearCart, selectCartItems } from '@/entities/cart/model/cartSlice'
 
 import { CityAutocomplete } from './CityAutocomplete'
 import { WarehouseAutocomplete } from './WarehouseAutocomplete'
 
 import type { City, Warehouse } from '@/entities/delivery/model/types'
-import type { RootState } from '@/shared/store/store'
 import type { CheckoutFormData } from '../model/schema'
 
 export function DeliveryForm() {
@@ -23,7 +22,7 @@ export function DeliveryForm() {
     resolver: zodResolver(schema),
   })
 
-  const items = useSelector((state: RootState) => state.cart.items)
+  const items = useSelector(selectCartItems)
   const dispatch = useDispatch()
   const router = useRouter()
 

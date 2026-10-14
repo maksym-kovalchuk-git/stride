@@ -1,4 +1,4 @@
-import { MAX_QUANTITY } from '@/features/add-to-cart/model/constants'
+import { MAX_QUANTITY } from '@/shared/config/cart'
 
 // Коди помилок create_order (див. CLIENT_ERROR_STATUS у createOrder.ts) → текст для користувача
 export const ORDER_ERROR_MESSAGES: Record<string, string> = {

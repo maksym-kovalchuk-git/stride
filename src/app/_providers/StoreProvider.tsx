@@ -3,10 +3,10 @@
 import { useEffect, useRef } from 'react'
 import { Provider } from 'react-redux'
 import { makeStore } from './store'
-import { hydrateCart } from '@/features/add-to-cart/model/cartSlice'
+import { hydrateCart } from '@/entities/cart/model/cartSlice'
 
 import type { AppStore } from './store'
-import type { CartState } from '@/features/add-to-cart/model/cartSlice'
+import type { CartState } from '@/entities/cart/model/cartSlice'
 
 function saveToLocalStorage(state: CartState) {
   try {
