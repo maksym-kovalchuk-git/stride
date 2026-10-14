@@ -15,6 +15,7 @@ type CreateOrderParams = {
 type CreateOrderRow = {
   order_id: string
   total_amount: number
+  status: string
 }
 
 // Коди з raise exception у create_order, спричинені даними клієнта, і їхній HTTP-статус.
@@ -24,6 +25,7 @@ const CLIENT_ERROR_STATUS: Record<string, 400 | 409> = {
   out_of_stock: 400,
   quantity_limit: 400,
   idempotency_conflict: 409,
+  order_cancelled: 409,
 }
 
 export class OrderValidationError extends Error {
@@ -32,11 +34,11 @@ export class OrderValidationError extends Error {
   }
 }
 
-export async function createOrder(orderData: CreateOrderParams): Promise<{ orderId: string; totalAmount: number }> {
+export async function createOrder(orderData: CreateOrderParams): Promise<{ orderId: string; totalAmount: number; status: string }> {
   const supabase = createAdminClient()
   const { formData } = orderData
 
-  // Злиття дублікатів, перевірки, ціни, списання залишку й транзакція — у create_order (0008)
+  // Злиття дублікатів, перевірки, ціни, списання залишку й транзакція — у create_order (0010)
   const { data, error } = await supabase
     .rpc('create_order', {
       p_user_id: orderData.userId,
@@ -69,5 +71,5 @@ export async function createOrder(orderData: CreateOrderParams): Promise<{ order
     throw new Error('create_order returned no rows')
   }
 
-  return { orderId: row.order_id, totalAmount: Number(row.total_amount) }
+  return { orderId: row.order_id, totalAmount: Number(row.total_amount), status: row.status }
 }

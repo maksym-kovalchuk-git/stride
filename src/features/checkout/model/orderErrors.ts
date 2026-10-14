@@ -6,6 +6,7 @@ export const ORDER_ERROR_MESSAGES: Record<string, string> = {
   variant_unavailable: 'Один із товарів більше недоступний. Видаліть його з кошика.',
   quantity_limit: `Не більше ${MAX_QUANTITY} шт. одного товару в замовленні.`,
   idempotency_conflict: 'Дані замовлення змінилися під час оформлення. Перевірте форму й натисніть ще раз.',
+  order_cancelled: 'Час на оплату минув, і замовлення скасовано. Натисніть «Оформити замовлення» ще раз.',
 }
 
 export const DEFAULT_ORDER_ERROR = 'Не вдалося оформити замовлення. Спробуйте ще раз.'

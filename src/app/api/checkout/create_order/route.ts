@@ -1,5 +1,6 @@
 import { createOrder, OrderValidationError } from '@/features/checkout/api/createOrder'
 import { createOrderSchema } from '@/features/checkout/model/schema'
+import { getNextStep } from '@/features/checkout/model/getNextStep'
 import { createClient } from '@/shared/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -21,15 +22,14 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
 
   try {
-    const result = await createOrder({ ...parsed.data, userId: user?.id ?? null })
-    // Що робити далі, вирішує сервер; клієнт лише виконує.
-    // Та сама відповідність paymentMethod → статус є в create_order (0008) — змінювати разом
-    const nextStep = parsed.data.formData.paymentMethod === 'card_online' ? 'pay' : 'success'
-    return NextResponse.json({ ...result, nextStep })
+    const { orderId, totalAmount, status } = await createOrder({ ...parsed.data, userId: user?.id ?? null })
+    // Що робити далі, вирішує сервер за статусом із create_order; клієнт лише виконує
+    return NextResponse.json({ orderId, totalAmount, nextStep: getNextStep(status) })
   } catch (error) {
     if (error instanceof OrderValidationError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
+    console.error('create_order route failed:', error)
     return NextResponse.json({ error: 'Failed to create order' }, { status: 500 })
   }
 }
