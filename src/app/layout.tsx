@@ -1,6 +1,7 @@
 import "./globals.css";
 import { StoreProvider } from "@/shared/store/StoreProvider";
 import { Header } from "@/widgets/header/ui/Header";
+import { AppToaster } from "@/shared/ui/AppToaster";
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -12,6 +13,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               {children}
             </main>
         </StoreProvider>
+        <AppToaster />
       </body>
     </html>
   );
