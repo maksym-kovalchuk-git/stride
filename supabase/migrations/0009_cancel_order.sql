@@ -15,17 +15,19 @@ create index idx_orders_pending_card_created
 -- брати блокування в різному порядку і впасти в deadlock.
 --
 -- shipped і delivered не скасовуються: товар уже не на складі (повернення — окремий процес).
+--
+-- pg_temp останнім у search_path: інакше Postgres неявно шукає в ньому першим, і тимчасова
+-- таблиця з іменем orders чи order_items могла б підмінити справжню в security definer функції.
 create function public.cancel_order(p_order_id uuid)
 returns boolean
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_cancelled_id uuid;
   v_variant_ids uuid[];
   v_quantities int[];
-  v_count int;
 begin
   update orders
   set status = 'cancelled'
@@ -52,7 +54,7 @@ begin
     return true;
   end if;
 
-  select count(*) into v_count
+  perform 1
   from (
     select v.id
     from product_variants v
@@ -77,7 +79,7 @@ create function public.cancel_expired_orders(p_minutes int)
 returns int
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_order_id uuid;
