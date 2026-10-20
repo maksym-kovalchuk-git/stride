@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { NextResponse } from 'next/server'
 
 import { startPayment, PaymentError } from '@/features/checkout/api/startPayment'
+import { getAppOrigin } from '@/features/checkout/config/appUrl'
 import { createClient } from '@/shared/lib/supabase/server'
 
 const bodySchema = z.object({
@@ -23,9 +24,9 @@ export async function POST(request: Request) {
 
   const publicKey = process.env.LIQPAY_PUBLIC_KEY
   const privateKey = process.env.LIQPAY_PRIVATE_KEY
-  const serverBaseUrl = process.env.APP_URL
+  const serverBaseUrl = getAppOrigin(process.env.APP_URL)
   if (!publicKey || !privateKey || !serverBaseUrl) {
-    console.error('payment route: LIQPAY_PUBLIC_KEY, LIQPAY_PRIVATE_KEY or APP_URL is not set')
+    console.error('payment route: LIQPAY_PUBLIC_KEY, LIQPAY_PRIVATE_KEY or a valid APP_URL (plain https origin) is not set')
     return NextResponse.json({ error: 'Failed to start payment' }, { status: 500 })
   }
 
