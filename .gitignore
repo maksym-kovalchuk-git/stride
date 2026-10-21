@@ -12,7 +12,9 @@
 
 # testing
 /coverage
-src/scripts
+scripts/checkSignature.mjs
+scripts/signCallback.mjs
+payload.json
 
 # next.js
 /.next/
@@ -41,4 +43,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+
 

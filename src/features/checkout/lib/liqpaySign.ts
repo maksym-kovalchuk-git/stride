@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 
 // Параметри checkout-форми LiqPay: https://www.liqpay.ua/doc/api/internet_acquiring/checkout
 export type LiqpayCheckoutParams = {
@@ -23,6 +23,14 @@ const SIGNATURE_ALGORITHM = 'sha1'
 // Окремо від liqpaySign: webhook перераховує підпис від отриманого data тією ж формулою
 export function liqpaySignature(data: string, privateKey: string): string {
   return createHash(SIGNATURE_ALGORITHM).update(privateKey + data + privateKey).digest('base64')
+}
+
+// Порівняння, стійке до timing-атак. timingSafeEqual вимагає однакової довжини,
+// тож різна довжина — одразу false (довжина SHA-1 у base64 і так фіксована)
+export function verifyLiqpaySignature(data: string, signature: string, privateKey: string): boolean {
+  const expected = Buffer.from(liqpaySignature(data, privateKey))
+  const received = Buffer.from(signature)
+  return expected.length === received.length && timingSafeEqual(expected, received)
 }
 
 // Чиста функція: ключ приходить аргументом, а не з process.env — так її легко тестувати
