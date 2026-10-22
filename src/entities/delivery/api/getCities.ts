@@ -1,5 +1,11 @@
 import type { City } from '../model/types'
 
+type NpCity = {
+  Ref: string
+  Description: string
+  AreaDescription: string
+}
+
 export async function getCities(query: string): Promise<City[]> {
   const response = await fetch('https://api.novaposhta.ua/v2.0/json/', {
     method: 'POST',
@@ -16,9 +22,18 @@ export async function getCities(query: string): Promise<City[]> {
     }),
   })
 
+  if (!response.ok) {
+    throw new Error(`Nova Poshta getCities: HTTP ${response.status}`)
+  }
+
   const res = await response.json()
 
-  return res.data.map((city: any) => ({
+  // НП відповідає 200 навіть на помилку: причина — у success/errors, а data тоді може бути відсутнім
+  if (!res.success || !Array.isArray(res.data)) {
+    throw new Error(`Nova Poshta getCities failed: ${JSON.stringify(res.errors ?? res)}`)
+  }
+
+  return res.data.map((city: NpCity) => ({
     ref: city.Ref,
     description: city.Description,
     areaDescription: city.AreaDescription,

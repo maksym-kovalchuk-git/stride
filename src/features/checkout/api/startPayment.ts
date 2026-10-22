@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/shared/lib/supabase/admin'
 
-import { liqpaySign } from '../lib/liqpaySign'
+import { LIQPAY_API_VERSION, liqpaySign } from '../lib/liqpaySign'
 import {
   LIQPAY_CALLBACK_PATH,
   PAYMENT_MAX_ATTEMPTS,
@@ -77,7 +77,7 @@ export async function startPayment(params: StartPaymentParams): Promise<{ data: 
   return liqpaySign(
     {
       public_key: params.publicKey,
-      version: 3,
+      version: LIQPAY_API_VERSION,
       action: 'pay',
       amount: Number(row.amount),
       currency: 'UAH',

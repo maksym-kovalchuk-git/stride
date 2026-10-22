@@ -16,9 +16,13 @@ export type LiqpayCheckoutParams = {
   language?: 'uk' | 'en'
 }
 
-// SHA-1 — як в офіційному SDK (sdk-nodejs) і в прикладі документації.
-// Текст документації згадує sha3-256; якщо LiqPay відхилить підпис, міняти тут
-const SIGNATURE_ALGORITHM = 'sha1'
+// SHA3-256 — поточна специфікація LiqPay: приклад signature з документації
+// (0adgJ8F2Ds5HCVkcz4AlmdLMRoIJf7IxsL3QmeFRz/s=) збігається лише з ним.
+// SHA-1 зі старого sdk-nodejs і з прикладу bash — застарілий варіант
+const SIGNATURE_ALGORITHM = 'sha3-256'
+
+// Поточна версія API за документацією
+export const LIQPAY_API_VERSION = 7
 
 // Окремо від liqpaySign: webhook перераховує підпис від отриманого data тією ж формулою
 export function liqpaySignature(data: string, privateKey: string): string {
@@ -26,7 +30,7 @@ export function liqpaySignature(data: string, privateKey: string): string {
 }
 
 // Порівняння, стійке до timing-атак. timingSafeEqual вимагає однакової довжини,
-// тож різна довжина — одразу false (довжина SHA-1 у base64 і так фіксована)
+// тож різна довжина — одразу false (довжина хешу в base64 і так фіксована)
 export function verifyLiqpaySignature(data: string, signature: string, privateKey: string): boolean {
   const expected = Buffer.from(liqpaySignature(data, privateKey))
   const received = Buffer.from(signature)

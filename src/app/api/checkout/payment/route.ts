@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { NextResponse } from 'next/server'
 
 import { startPayment, PaymentError } from '@/features/checkout/api/startPayment'
-import { getAppOrigin } from '@/features/checkout/config/appUrl'
+import { getAppOrigin, getRequestOrigin } from '@/features/checkout/config/appUrl'
 import { createClient } from '@/shared/lib/supabase/server'
 
 const bodySchema = z.object({
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       orderId: parsed.data.orderId,
       userId: user?.id ?? null,
       // result_url — туди, звідки прийшов браузер; server_url — публічна адреса з APP_URL
-      appOrigin: new URL(request.url).origin,
+      appOrigin: getRequestOrigin(request),
       serverBaseUrl,
       publicKey,
       privateKey,

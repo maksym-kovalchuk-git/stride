@@ -28,6 +28,9 @@ export function WarehouseAutocomplete({ cityRef, value, onChange, onSelect }: Wa
       },
       body: JSON.stringify({ cityRef })
       })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
       setData(await response.json())
     } catch (error) {
       console.error('Error fetching warehouses:', error)

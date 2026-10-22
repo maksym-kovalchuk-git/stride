@@ -27,6 +27,9 @@ export function CityAutocomplete({ value, onChange, onSelect }: CityAutocomplete
       },
       body: JSON.stringify({ query })
       })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
       setData(await response.json())
     } catch (error) {
       console.error('Error fetching cities:', error)

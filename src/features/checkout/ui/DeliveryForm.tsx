@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useDispatch, useSelector } from 'react-redux'
@@ -8,8 +8,10 @@ import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
 import { schema } from '../model/schema'
-import { getOrderErrorMessage, DEFAULT_ORDER_ERROR } from '../model/orderErrors'
+import { getOrderErrorMessage, DEFAULT_ORDER_ERROR, DEFAULT_PAYMENT_ERROR } from '../model/orderErrors'
+import { redirectToLiqpay } from '../lib/redirectToLiqpay'
 import { clearCart, selectCartItems } from '@/entities/cart/model/cartSlice'
+import { randomUUID } from '@/shared/lib/randomUUID'
 
 import { CityAutocomplete } from './CityAutocomplete'
 import { WarehouseAutocomplete } from './WarehouseAutocomplete'
@@ -30,7 +32,7 @@ export function DeliveryForm() {
   // змінюється лише після 400/409 (див. onSubmit)
   const idempotencyKeyRef = useRef<string | null>(null)
   if (idempotencyKeyRef.current === null) {
-    idempotencyKeyRef.current = crypto.randomUUID()
+    idempotencyKeyRef.current = randomUUID()
   }
 
   const [cityText, setCityText] = useState('')
@@ -38,6 +40,18 @@ export function DeliveryForm() {
   // Назви фіксуються лише в момент вибору зі списку — разом із ref
   const [selectedCityName, setSelectedCityName] = useState('')
   const [selectedWarehouseName, setSelectedWarehouseName] = useState('')
+
+  // Між submit() форми LiqPay і переходом onSubmit уже завершився — кнопку тримаємо вимкненою
+  const [isRedirecting, setIsRedirecting] = useState(false)
+
+  // Кнопка «Назад» з LiqPay відновлює сторінку з bfcache разом зі станом — інакше кнопка лишилась би вимкненою
+  useEffect(() => {
+    function handlePageShow(event: PageTransitionEvent) {
+      if (event.persisted) setIsRedirecting(false)
+    }
+    window.addEventListener('pageshow', handlePageShow)
+    return () => window.removeEventListener('pageshow', handlePageShow)
+  }, [])
 
   const cityRef = watch('cityRef')
 
@@ -72,6 +86,47 @@ export function DeliveryForm() {
     setSelectedWarehouseName(warehouse.description)
   }
 
+  // Нова спроба оплати для вже створеного замовлення: підпис на сервері, потім форма на LiqPay
+  async function goToPayment(orderId: string) {
+    let res: Response
+    try {
+      res = await fetch('/api/checkout/payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      })
+    } catch {
+      // Ключ лишаємо: наступне натискання поверне те саме замовлення й дасть нову спробу
+      toast.error(DEFAULT_PAYMENT_ERROR)
+      return
+    }
+
+    const body = await res.json().catch(() => null)
+
+    if (!res.ok) {
+      // Оплату вже підтвердив webhook (наприклад, попередня спроба) — показуємо результат
+      if (body?.error === 'order_already_paid') {
+        router.push(`/checkout/success?orderId=${orderId}`)
+        return
+      }
+      // 409/404: це замовлення оплатити вже не вийде (скасоване, час минув, забагато спроб) —
+      // новий ключ, щоб наступне натискання створило нове замовлення. На 500 ключ лишаємо
+      if (res.status === 409 || res.status === 404) {
+        idempotencyKeyRef.current = randomUUID()
+      }
+      toast.error(getOrderErrorMessage(body?.error, DEFAULT_PAYMENT_ERROR))
+      return
+    }
+
+    if (typeof body?.data !== 'string' || typeof body?.signature !== 'string') {
+      toast.error(DEFAULT_PAYMENT_ERROR)
+      return
+    }
+
+    setIsRedirecting(true)
+    redirectToLiqpay(body.data, body.signature)
+  }
+
   async function onSubmit(data: CheckoutFormData) {
     if (items.length === 0) {
       toast.error('Кошик порожній')
@@ -104,7 +159,7 @@ export function DeliveryForm() {
       // 400/409: користувач щось змінить, тож наступна спроба — нова. На 500 ключ лишаємо.
       // Автоматично не повторюємо: старе замовлення могло створитись і висіти резервом
       if (res.status === 400 || res.status === 409) {
-        idempotencyKeyRef.current = crypto.randomUUID()
+        idempotencyKeyRef.current = randomUUID()
       }
       toast.error(getOrderErrorMessage(body?.error))
       return
@@ -121,7 +176,8 @@ export function DeliveryForm() {
       return
     }
 
-    // nextStep === 'pay' — крок LiqPay; кошик не чистимо до підтвердженої оплати
+    // nextStep === 'pay': кошик не чистимо до підтвердженої оплати
+    await goToPayment(body.orderId)
   }
 
   return (
@@ -157,8 +213,8 @@ export function DeliveryForm() {
       <input type="radio" value="card_online" {...register('paymentMethod')} /> Card Online
       <input type="radio" value="after_delivery" {...register('paymentMethod')} /> After Delivery
       {errors.paymentMethod && <span>{errors.paymentMethod.message}</span>}
-      <button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? 'Оформлюємо…' : 'Оформити замовлення'}
+      <button type="submit" disabled={isSubmitting || isRedirecting}>
+        {isRedirecting ? 'Переходимо до оплати…' : isSubmitting ? 'Оформлюємо…' : 'Оформити замовлення'}
       </button>
     </form>
   )
