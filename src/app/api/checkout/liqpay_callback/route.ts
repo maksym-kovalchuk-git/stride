@@ -1,4 +1,5 @@
 // Шлях збігається з LIQPAY_CALLBACK_PATH (features/checkout/config/payment.ts) — це server_url для LiqPay
+import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 
 import { verifyLiqpaySignature } from '@/features/checkout/lib/liqpaySign'
@@ -26,6 +27,10 @@ function isSuccessStatus(status: string, publicKey: string): boolean {
   return status === 'success' || (status === 'sandbox' && publicKey.startsWith('sandbox_'))
 }
 
+function isLegacySha1Signature(data: string, signature: string, privateKey: string): boolean {
+  return createHash('sha1').update(privateKey + data + privateKey).digest('base64') === signature
+}
+
 // Гроші порівнюємо в копійках, щоб уникнути похибок float
 const toKopecks = (value: number) => Math.round(value * 100)
 
@@ -38,20 +43,27 @@ export async function POST(request: Request) {
   }
 
   // POST з полями data і signature; formData() читає і urlencoded, і multipart
+  // 400-гілки логуємо: інакше відхилений callback LiqPay у терміналі не видно взагалі
   let form: FormData
   try {
     form = await request.formData()
   } catch {
+    console.warn('liqpay_callback: body is not form data', request.headers.get('content-type'))
     return badRequest()
   }
   const data = form.get('data')
   const signature = form.get('signature')
   if (typeof data !== 'string' || typeof signature !== 'string') {
+    console.warn('liqpay_callback: missing data or signature', [...form.keys()])
     return badRequest()
   }
 
   // Невірний підпис — це не LiqPay: нічого не чіпаємо
   if (!verifyLiqpaySignature(data, signature, privateKey)) {
+    // Діагностика: підпис старим SHA-1 не приймаємо, але кажемо про нього — це не підробка, а інший алгоритм
+    console.warn('liqpay_callback: invalid signature', {
+      signedWithSha1: isLegacySha1Signature(data, signature, privateKey),
+    })
     return badRequest()
   }
 

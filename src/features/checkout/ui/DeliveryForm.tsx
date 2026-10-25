@@ -8,8 +8,8 @@ import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
 import { schema } from '../model/schema'
-import { getOrderErrorMessage, DEFAULT_ORDER_ERROR, DEFAULT_PAYMENT_ERROR } from '../model/orderErrors'
-import { redirectToLiqpay } from '../lib/redirectToLiqpay'
+import { getOrderErrorMessage, DEFAULT_ORDER_ERROR } from '../model/orderErrors'
+import { requestPayment } from '../model/requestPayment'
 import { clearCart, selectCartItems } from '@/entities/cart/model/cartSlice'
 import { randomUUID } from '@/shared/lib/randomUUID'
 
@@ -86,45 +86,28 @@ export function DeliveryForm() {
     setSelectedWarehouseName(warehouse.description)
   }
 
-  // Нова спроба оплати для вже створеного замовлення: підпис на сервері, потім форма на LiqPay
+  // Оплата щойно створеного замовлення — та сама логіка, що на сторінці успіху й у банері
   async function goToPayment(orderId: string) {
-    let res: Response
-    try {
-      res = await fetch('/api/checkout/payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId }),
-      })
-    } catch {
-      // Ключ лишаємо: наступне натискання поверне те саме замовлення й дасть нову спробу
-      toast.error(DEFAULT_PAYMENT_ERROR)
-      return
-    }
+    const result = await requestPayment(orderId)
 
-    const body = await res.json().catch(() => null)
-
-    if (!res.ok) {
-      // Оплату вже підтвердив webhook (наприклад, попередня спроба) — показуємо результат
-      if (body?.error === 'order_already_paid') {
+    switch (result.kind) {
+      case 'redirected':
+        setIsRedirecting(true)
+        return
+      case 'already_paid':
+        // Оплату вже підтвердив webhook (наприклад, попередня спроба) — показуємо результат
         router.push(`/checkout/success?orderId=${orderId}`)
         return
-      }
-      // 409/404: це замовлення оплатити вже не вийде (скасоване, час минув, забагато спроб) —
-      // новий ключ, щоб наступне натискання створило нове замовлення. На 500 ключ лишаємо
-      if (res.status === 409 || res.status === 404) {
+      case 'closed':
+        // Це замовлення оплатити вже не вийде — новий ключ, щоб наступне натискання створило нове
         idempotencyKeyRef.current = randomUUID()
-      }
-      toast.error(getOrderErrorMessage(body?.error, DEFAULT_PAYMENT_ERROR))
-      return
+        toast.error(result.message)
+        return
+      case 'error':
+        // Ключ лишаємо: наступне натискання поверне те саме замовлення й дасть нову спробу
+        toast.error(result.message)
+        return
     }
-
-    if (typeof body?.data !== 'string' || typeof body?.signature !== 'string') {
-      toast.error(DEFAULT_PAYMENT_ERROR)
-      return
-    }
-
-    setIsRedirecting(true)
-    redirectToLiqpay(body.data, body.signature)
   }
 
   async function onSubmit(data: CheckoutFormData) {

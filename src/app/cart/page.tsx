@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import { increaseQuantity, decreaseQuantity, removeItem, clearCart, selectCartItems } from '@/entities/cart/model/cartSlice'
 import { MAX_QUANTITY } from '@/shared/config/cart'
+import { PendingOrderBanner } from '@/features/checkout/ui/PendingOrderBanner'
 
 import Link from 'next/link'
 
@@ -19,6 +20,7 @@ export default function CartPage() {
   return (
     <div style={{ padding: 40 }}>
       <h1>Кошик</h1>
+      <PendingOrderBanner />
         {items.length === 0 ? (
           <p>Кошик порожній</p>
         ) : (

@@ -14,7 +14,6 @@
 /coverage
 scripts/checkSignature.mjs
 scripts/signCallback.mjs
-scripts/sendCallback.mjs
 payload.json
 
 # next.js
