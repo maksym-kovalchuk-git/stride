@@ -18,25 +18,6 @@ export function CityAutocomplete({ value, onChange, onSelect }: CityAutocomplete
 
   const citiesToShow = debouncedValue ? data : POPULAR_CITIES
 
-  const handleSearchCity = async (query: string) => {
-    try {
-      const response = await fetch('/api/delivery/cities', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ query })
-      })
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-      setData(await response.json())
-    } catch (error) {
-      console.error('Error fetching cities:', error)
-      setData([]) // очищаємо дані у випадку помилки
-    }
-  }
-
   const handleSelectCity = (city: City) => {
     onChange(city.description)
     onSelect(city)
@@ -44,10 +25,36 @@ export function CityAutocomplete({ value, onChange, onSelect }: CityAutocomplete
   }
 
   useEffect(() => {
-    if (debouncedValue) {
-      handleSearchCity(debouncedValue)
+    if (!debouncedValue) return
+
+    // Новий запит скасовує попередній — інакше пізня відповідь на «Ки» перезапише відповідь на «Київ»
+    const controller = new AbortController()
+
+    async function searchCity(query: string) {
+      try {
+        const response = await fetch('/api/delivery/cities', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ query }),
+          signal: controller.signal,
+        })
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+        setData(await response.json())
+      } catch (error) {
+        // Скасований запит — не помилка: не чіпаємо список, який уже належить новому запиту
+        if (controller.signal.aborted) return
+        console.error('Error fetching cities:', error)
+        setData([]) // очищаємо дані у випадку помилки
+      }
     }
-  }, [debouncedValue]) 
+
+    searchCity(debouncedValue)
+    return () => controller.abort()
+  }, [debouncedValue])
 
   return (
     <>

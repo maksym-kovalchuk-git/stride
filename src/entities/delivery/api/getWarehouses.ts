@@ -3,6 +3,7 @@ import type { Warehouse } from '../model/types'
 type NpWarehouse = {
   Ref: string
   Description: string
+  CityDescription: string
 }
 
 export async function getWarehouses(cityRef: string): Promise<Warehouse[]> {
@@ -35,5 +36,6 @@ export async function getWarehouses(cityRef: string): Promise<Warehouse[]> {
   return res.data.map((warehouse: NpWarehouse) => ({
     ref: warehouse.Ref,
     description: warehouse.Description,
+    cityDescription: warehouse.CityDescription,
   }))
 }

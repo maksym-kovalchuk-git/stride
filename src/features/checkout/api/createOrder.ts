@@ -1,13 +1,12 @@
 import { createAdminClient } from '@/shared/lib/supabase/admin'
 import { MAX_QUANTITY } from '@/shared/config/cart'
+import { getWarehouses } from '@/entities/delivery/api/getWarehouses'
 
 import type { CheckoutFormData, OrderItemInput } from '../model/schema'
 
 type CreateOrderParams = {
   idempotencyKey: string
   formData: CheckoutFormData
-  cityName: string
-  warehouseName: string
   items: OrderItemInput[]
   userId: string | null
 }
@@ -34,9 +33,22 @@ export class OrderValidationError extends Error {
   }
 }
 
+// Як і з ціною: адресу доставки з браузера на віру не беремо. Відділення має бути серед
+// відділень цього міста за даними Нової Пошти, а назви міста й відділення — з її ж відповіді.
+// Збій НП — звичайна помилка (500): клієнт лишить ключ ідемпотентності й зможе повторити
+async function resolveDelivery(cityRef: string, warehouseRef: string): Promise<{ cityName: string; warehouseName: string }> {
+  const warehouses = await getWarehouses(cityRef)
+  const warehouse = warehouses.find((w) => w.ref === warehouseRef)
+  if (!warehouse) {
+    throw new OrderValidationError('invalid_delivery', 400)
+  }
+  return { cityName: warehouse.cityDescription, warehouseName: warehouse.description }
+}
+
 export async function createOrder(orderData: CreateOrderParams): Promise<{ orderId: string; totalAmount: number; status: string }> {
   const supabase = createAdminClient()
   const { formData } = orderData
+  const { cityName, warehouseName } = await resolveDelivery(formData.cityRef, formData.warehouseRef)
 
   // Злиття дублікатів, перевірки, ціни, списання залишку й транзакція — у create_order (0010)
   const { data, error } = await supabase
@@ -50,9 +62,9 @@ export async function createOrder(orderData: CreateOrderParams): Promise<{ order
       p_recipient_last_name: formData.lastName,
       p_phone: formData.phone,
       p_np_city_ref: formData.cityRef,
-      p_np_city_name: orderData.cityName,
+      p_np_city_name: cityName,
       p_np_branch_ref: formData.warehouseRef,
-      p_np_branch_name: orderData.warehouseName,
+      p_np_branch_name: warehouseName,
     })
 
   if (error) {

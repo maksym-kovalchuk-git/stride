@@ -23,8 +23,7 @@ export const createOrderSchema = z.object({
   // Один UUID на спробу оформлення — повтор з ним повертає те саме замовлення
   idempotencyKey: z.uuid(),
   formData: schema,
-  cityName: z.string().min(1).max(200),
-  warehouseName: z.string().min(1).max(300),
+  // cityName/warehouseName не приймаємо: сервер бере назви з Нової Пошти за ref (див. createOrder)
   items: z.array(orderItemSchema).min(1).max(50),
 })
 

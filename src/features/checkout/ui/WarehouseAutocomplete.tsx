@@ -19,35 +19,44 @@ export function WarehouseAutocomplete({ cityRef, value, onChange, onSelect }: Wa
     ? data.filter((w) => w.description.toLowerCase().includes(debouncedValue.toLowerCase()))
     : data
 
-  const handleSearchWarehouse = async (cityRef: string) => {
-    try {
-      const response = await fetch('/api/delivery/warehouses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ cityRef })
-      })
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-      setData(await response.json())
-    } catch (error) {
-      console.error('Error fetching warehouses:', error)
-      setData([]) // очищаємо дані у випадку помилки
-    }
-  }
-
   const handleSelectWarehouse = (warehouse: Warehouse) => {
     onChange(warehouse.description)
     onSelect(warehouse)
   }
 
+  // Старий список при зміні міста не лишається: DeliveryForm дає компоненту key={cityRef},
+  // тож для нового міста він монтується заново з порожнім станом
   useEffect(() => {
-    if (cityRef) {
-      handleSearchWarehouse(cityRef)
+    if (!cityRef) return
+
+    // Скасовуємо запит, якщо компонент розмонтовано до відповіді — відділення старого міста не потраплять у список
+    const controller = new AbortController()
+
+    async function searchWarehouses(cityRef: string) {
+      try {
+        const response = await fetch('/api/delivery/warehouses', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ cityRef }),
+          signal: controller.signal,
+        })
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+        setData(await response.json())
+      } catch (error) {
+        // Скасований запит — не помилка: не чіпаємо список, який уже належить новому запиту
+        if (controller.signal.aborted) return
+        console.error('Error fetching warehouses:', error)
+        setData([]) // очищаємо дані у випадку помилки
+      }
     }
-  }, [cityRef]) 
+
+    searchWarehouses(cityRef)
+    return () => controller.abort()
+  }, [cityRef])
 
   return (
     <>

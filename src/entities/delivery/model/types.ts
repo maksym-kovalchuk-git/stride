@@ -7,4 +7,5 @@ export type City = {
 export type Warehouse = {
     ref: string
     description: string
+    cityDescription: string
 }

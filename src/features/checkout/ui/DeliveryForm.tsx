@@ -37,9 +37,6 @@ export function DeliveryForm() {
 
   const [cityText, setCityText] = useState('')
   const [warehouseText, setWarehouseText] = useState('')
-  // Назви фіксуються лише в момент вибору зі списку — разом із ref
-  const [selectedCityName, setSelectedCityName] = useState('')
-  const [selectedWarehouseName, setSelectedWarehouseName] = useState('')
 
   // Між submit() форми LiqPay і переходом onSubmit уже завершився — кнопку тримаємо вимкненою
   const [isRedirecting, setIsRedirecting] = useState(false)
@@ -57,7 +54,6 @@ export function DeliveryForm() {
 
   function resetWarehouse() {
     setWarehouseText('')
-    setSelectedWarehouseName('')
     setValue('warehouseRef', '', { shouldValidate: isSubmitted })
   }
 
@@ -65,25 +61,21 @@ export function DeliveryForm() {
   // Автокомпліт при кліку спершу викликає onChange, потім onSelect, тож вибір відновлюється одразу
   function handleCityTextChange(text: string) {
     setCityText(text)
-    setSelectedCityName('')
     setValue('cityRef', '', { shouldValidate: isSubmitted })
     resetWarehouse()
   }
 
   function handleWarehouseTextChange(text: string) {
     setWarehouseText(text)
-    setSelectedWarehouseName('')
     setValue('warehouseRef', '', { shouldValidate: isSubmitted })
   }
 
   function handleSelectCity(city: City) {
     setValue('cityRef', city.ref, { shouldValidate: true })
-    setSelectedCityName(city.description)
   }
 
   function handleSelectWarehouse(warehouse: Warehouse) {
     setValue('warehouseRef', warehouse.ref, { shouldValidate: true })
-    setSelectedWarehouseName(warehouse.description)
   }
 
   // Оплата щойно створеного замовлення — та сама логіка, що на сторінці успіху й у банері
@@ -123,9 +115,8 @@ export function DeliveryForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           idempotencyKey: idempotencyKeyRef.current,
+          // Назви міста й відділення сервер бере з Нової Пошти за ref — їх не надсилаємо
           formData: data,
-          cityName: selectedCityName,
-          warehouseName: selectedWarehouseName,
           // Ціну, назву й фото сервер не приймає — лише що і скільки
           items: items.map(({ variant_id, quantity }) => ({ variant_id, quantity })),
         }),
@@ -186,7 +177,9 @@ export function DeliveryForm() {
         onSelect={handleSelectCity}
       />
       {errors.cityRef && <span>{errors.cityRef.message}</span>}
+      {/* key: нове місто — новий екземпляр із порожнім списком, без відділень попереднього міста */}
       <WarehouseAutocomplete
+        key={cityRef ?? ''}
         cityRef={cityRef ?? ''}
         value={warehouseText}
         onChange={handleWarehouseTextChange}
