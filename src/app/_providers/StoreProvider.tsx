@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { Provider } from 'react-redux'
 import { makeStore } from './store'
 import { hydrateCart } from '@/entities/cart/model/cartSlice'
 
-import type { AppStore } from './store'
 import type { CartState } from '@/entities/cart/model/cartSlice'
 
 function saveToLocalStorage(state: CartState) {
@@ -29,27 +28,25 @@ function loadFromLocalStorage(): CartState | undefined {
 }
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const storeRef = useRef<AppStore | null>(null)
+  // Функція без виклику — лінива ініціалізація: стор створюється один раз, при першому рендері.
+  // Стартує з порожнім кошиком, щоб перший клієнтський рендер збігався із серверним і не ламав hydration.
+  const [store] = useState(makeStore)
 
-  if (!storeRef.current) {
-    // Стор завжди стартує з порожнім кошиком, щоб перший клієнтський
-    // рендер збігався із серверним і не ламав hydration.
-    const store = makeStore()
-    storeRef.current = store
-    store.subscribe(() => {
-      saveToLocalStorage(store.getState().cart) // зберігаємо стан кошика в localStorage при кожній зміні
-    })
-  }
+  // Зберігаємо стан кошика в localStorage при кожній зміні; subscribe повертає функцію відписки
+  useEffect(() => store.subscribe(() => {
+    saveToLocalStorage(store.getState().cart)
+  }), [store])
 
+  // У StrictMode ефект виконається двічі — безпечно: hydrateCart замінює items, а не додає
   useEffect(() => {
     const cartState = loadFromLocalStorage()
     if (cartState) {
-      storeRef.current?.dispatch(hydrateCart(cartState.items))
+      store.dispatch(hydrateCart(cartState.items))
     }
-  }, [])
+  }, [store])
 
   return (
-    <Provider store={storeRef.current}>
+    <Provider store={store}>
       {children}
     </Provider>
   )
