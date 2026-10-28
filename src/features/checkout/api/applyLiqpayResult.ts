@@ -2,6 +2,8 @@ import 'server-only'
 
 import { createAdminClient } from '@/shared/lib/supabase/admin'
 
+import { isAcceptedStatus } from '../model/orderStatus'
+
 // Результат LiqPay для однієї спроби оплати.
 type LiqpayResultInput = {
   orderId: string
@@ -14,7 +16,7 @@ type LiqpayResultInput = {
 
 export type ApplyResult =
   | 'paid'          // pending → paid
-  | 'late_success'  // успіх на скасованому/вже оплаченому — потрібна перевірка повернення
+  | 'late_success'  // успіх на скасованому/оплаченому іншим платежем — потрібна перевірка повернення
   | 'recorded'      // записали невдалий статус
   | 'ignored'       // розбіжність з базою: не знайдено, номер спроби, сума чи валюта
 
@@ -29,6 +31,8 @@ const toKopecks = (value: number) => Math.round(value * 100)
 
 export async function applyLiqpayResult(input: LiqpayResultInput, publicKey: string): Promise<ApplyResult> {
   const { orderId, attempt, status: liqpayStatus, paymentId } = input
+  // == null ловить і null, і undefined — щоб не записати в базу рядок "undefined"
+  const paymentIdText = paymentId == null ? null : String(paymentId)
   const supabase = createAdminClient()
 
   const { data: order, error: readError } = await supabase
@@ -70,7 +74,7 @@ export async function applyLiqpayResult(input: LiqpayResultInput, publicKey: str
     // Умовний перехід pending → paid: повторний callback чи паралельна спроба не зроблять нічого
     const { data: paid, error: paidError } = await supabase
       .from('orders')
-      .update({ status: 'paid', liqpay_status: 'success' })
+      .update({ status: 'paid', liqpay_status: 'success', liqpay_payment_id: paymentIdText })
       .eq('id', orderId)
       .eq('status', 'pending')
       .select('id')
@@ -83,8 +87,28 @@ export async function applyLiqpayResult(input: LiqpayResultInput, publicKey: str
       return 'paid'
     }
 
-    // Замовлення вже не pending (скасоване за таймаутом або оплачене іншою спробою):
-    // фіксуємо успішну оплату — гроші, ймовірно, треба повернути вручну (README)
+    // Перечитуємо, а не беремо з першого читання: два одночасні повтори обидва прочитали б pending
+    const { data: current, error: rereadError } = await supabase
+      .from('orders')
+      .select('status, liqpay_payment_id')
+      .eq('id', orderId)
+      .single()
+
+    if (rereadError) {
+      throw new Error(`applyLiqpayResult: failed to reread order ${orderId}`, { cause: rereadError })
+    }
+
+    // Повтор того самого callback: цей платіж і перевів замовлення в paid
+    if (
+      isAcceptedStatus(current.status) &&
+      paymentIdText !== null &&
+      current.liqpay_payment_id === paymentIdText
+    ) {
+      return 'paid'
+    }
+
+    // Замовлення скасоване за таймаутом або оплачене іншим платежем: гроші треба повернути
+    // вручну (README). liqpay_payment_id не чіпаємо — він вказує на платіж, що оплатив замовлення
     const { error: lateError } = await supabase
       .from('orders')
       .update({ liqpay_status: 'success' })
