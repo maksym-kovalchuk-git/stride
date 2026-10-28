@@ -140,8 +140,10 @@ export function OrderStatusView({ orderId }: { orderId: string }) {
       {data.canPay ? (
         <PayOrderButton
           orderId={orderId}
-          label="Спробувати ще раз"
+          // Без відповіді LiqPay кнопка спершу перевіряє попередню спробу, а за not_found відкриває оплату
+          label={failed ? 'Спробувати ще раз' : 'Перевірити й оплатити'}
           onClosed={() => setReloadKey((key) => key + 1)}
+          onRefresh={() => setReloadKey((key) => key + 1)}
         />
       ) : (
         <>

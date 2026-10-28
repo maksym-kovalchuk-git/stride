@@ -11,9 +11,12 @@ type PayOrderButtonProps = {
   label?: string
   // Замовлення вже не оплатити — батьківський компонент може сховати себе чи оновити статус
   onClosed?: () => void
+  // Статус замовлення змінився або ще з'ясовується: батьківський компонент перечитує його сам.
+  // Без колбека — перехід на сторінку успіху, яка покаже статус
+  onRefresh?: () => void
 }
 
-export function PayOrderButton({ orderId, label = 'Оплатити', onClosed }: PayOrderButtonProps) {
+export function PayOrderButton({ orderId, label = 'Оплатити', onClosed, onRefresh }: PayOrderButtonProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
 
@@ -26,6 +29,11 @@ export function PayOrderButton({ orderId, label = 'Оплатити', onClosed }
     return () => window.removeEventListener('pageshow', handlePageShow)
   }, [])
 
+  function refresh() {
+    if (onRefresh) onRefresh()
+    else router.push(`/checkout/success?orderId=${orderId}`)
+  }
+
   async function handleClick() {
     setIsLoading(true)
     const result = await requestPayment(orderId)
@@ -35,7 +43,11 @@ export function PayOrderButton({ orderId, label = 'Оплатити', onClosed }
         // кнопка лишається вимкненою до переходу
         return
       case 'already_paid':
-        router.push(`/checkout/success?orderId=${orderId}`)
+        refresh()
+        break
+      case 'processing':
+        toast(result.message)
+        refresh()
         break
       case 'closed':
         toast.error(result.message)
@@ -44,6 +56,10 @@ export function PayOrderButton({ orderId, label = 'Оплатити', onClosed }
       case 'error':
         toast.error(result.message)
         break
+      default: {
+        const unhandled: never = result
+        throw new Error(`Unhandled payment result: ${JSON.stringify(unhandled)}`)
+      }
     }
     setIsLoading(false)
   }

@@ -90,6 +90,11 @@ export function DeliveryForm() {
         // Оплату вже підтвердив webhook (наприклад, попередня спроба) — показуємо результат
         router.push(`/checkout/success?orderId=${orderId}`)
         return
+      case 'processing':
+        // «Назад» з LiqPay і повторне «Оформити»: той самий ключ — те саме замовлення, спроба ще в банку.
+        // Ключ лишаємо: замовлення живе далі
+        router.push(`/checkout/success?orderId=${orderId}`)
+        return
       case 'closed':
         // Це замовлення оплатити вже не вийде — новий ключ, щоб наступне натискання створило нове
         idempotencyKeyRef.current = randomUUID()
@@ -99,6 +104,10 @@ export function DeliveryForm() {
         // Ключ лишаємо: наступне натискання поверне те саме замовлення й дасть нову спробу
         toast.error(result.message)
         return
+      default: {
+        const unhandled: never = result
+        throw new Error(`Unhandled payment result: ${JSON.stringify(unhandled)}`)
+      }
     }
   }
 
