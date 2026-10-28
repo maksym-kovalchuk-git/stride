@@ -53,7 +53,7 @@ async function checkPreviousAttempt(params: StartPaymentParams): Promise<void> {
 
   const { data: order, error } = await supabase
     .from('orders')
-    .select('user_id, payment_attempts, liqpay_order_id')
+    .select('status, user_id, payment_attempts, liqpay_order_id')
     .eq('id', params.orderId)
     .maybeSingle()
 
@@ -63,7 +63,8 @@ async function checkPreviousAttempt(params: StartPaymentParams): Promise<void> {
 
   // Не знайдене чи чуже — відповідь дасть start_payment_attempt (order_not_found)
   if (!order || (order.user_id !== null && order.user_id !== params.userId)) return
-  if (order.payment_attempts === 0 || !order.liqpay_order_id) return
+  // Не pending — RPC однаково відмовить; скасоване з успішною оплатою знайде звірка
+  if (order.status !== 'pending' || order.payment_attempts === 0 || !order.liqpay_order_id) return
 
   const parsedId = parseLiqpayOrderId(order.liqpay_order_id)
   if (!parsedId || parsedId.orderId !== params.orderId) {
