@@ -47,6 +47,14 @@ node --env-file=.env.local scripts/sendCallback.mjs <liqpay_order_id> <status> <
 
 `liqpay_order_id` — значення з `orders.liqpay_order_id` (`<uuid замовлення>-<номер спроби>`).
 
+### Перевірка LigPay статусу
+
+Виконання скрипта `scripts/checkStatus.mjs` показує, що LiqPay знає про оплату, незалежно від того, чи дійшов callback. У його відповіді є персональні дані платника (ім'я, IP, маска картки), тож не вставляйте її в issue чи публічні чати.
+
+```bash
+node --env-file=.env.local scripts/checkStatus.mjs <liqpay_order_id>
+```
+
 ## Відомі ризики
 
 - **Оплата після скасування за таймаутом.** Резерв `card_online` скасовується через 30 хвилин без оплати. Якщо callback LiqPay про успішну оплату прийде вже після цього, статус лишається `cancelled`, а успішний `liqpay_status` записується в замовлення. Кошти треба повернути вручну; адмінка має показувати такі замовлення (скасовані з успішною оплатою).
