@@ -3,6 +3,7 @@ import 'server-only'
 import { createAdminClient } from '@/shared/lib/supabase/admin'
 
 import { isAcceptedStatus } from '../model/orderStatus'
+import { isSuccessStatus } from '../lib/liqpayStatuses'
 
 // Результат LiqPay для однієї спроби оплати.
 type LiqpayResultInput = {
@@ -19,12 +20,6 @@ export type ApplyResult =
   | 'late_success'  // успіх на скасованому/оплаченому іншим платежем — потрібна перевірка повернення
   | 'recorded'      // записали невдалий статус
   | 'ignored'       // розбіжність з базою: не знайдено, номер спроби, сума чи валюта
-
-// Статус sandbox старі версії API повертали для тестових оплат; рахуємо його успіхом
-// лише з sandbox-ключами, щоб із бойовими він ніколи не перевів замовлення в paid
-function isSuccessStatus(status: string, publicKey: string): boolean {
-  return status === 'success' || (status === 'sandbox' && publicKey.startsWith('sandbox_'))
-}
 
 // Гроші порівнюємо в копійках, щоб уникнути похибок float
 const toKopecks = (value: number) => Math.round(value * 100)

@@ -9,9 +9,9 @@ import { clearCart } from '@/entities/cart/model/cartSlice'
 import {
   fetchOrderStatus,
   isAcceptedStatus,
-  isFailedLiqpayStatus,
   type OrderStatusResponse,
 } from '../model/orderStatus'
+import { isFailedLiqpayStatus } from '../lib/liqpayStatuses'
 import { clearPendingOrder } from '../model/pendingOrder'
 import { PayOrderButton } from './PayOrderButton'
 

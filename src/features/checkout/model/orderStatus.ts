@@ -10,16 +10,8 @@ export type OrderStatusResponse = {
 // Замовлення прийняте: оплачене карткою або накладений платіж
 const ACCEPTED_STATUSES = new Set(['paid', 'processing', 'shipped', 'delivered'])
 
-// Фінальні неуспішні статуси LiqPay. Скасування користувачем може взагалі не дати callback,
-// тож відсутність liqpay_status не означає, що оплата ще йде
-const FAILED_LIQPAY_STATUSES = new Set(['failure', 'error', 'reversed'])
-
 export function isAcceptedStatus(status: string): boolean {
   return ACCEPTED_STATUSES.has(status)
-}
-
-export function isFailedLiqpayStatus(liqpayStatus: string | null): boolean {
-  return liqpayStatus !== null && FAILED_LIQPAY_STATUSES.has(liqpayStatus)
 }
 
 export type FetchOrderStatusResult =
