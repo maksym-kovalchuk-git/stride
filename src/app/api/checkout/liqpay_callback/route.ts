@@ -2,9 +2,9 @@
 import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 
+import { applyLiqpayResult } from '@/features/checkout/api/applyLiqpayResult'
 import { verifyLiqpaySignature } from '@/features/checkout/lib/liqpaySign'
 import { parseLiqpayOrderId } from '@/features/checkout/lib/parseLiqpayOrderId'
-import { createAdminClient } from '@/shared/lib/supabase/admin'
 
 type LiqpayCallbackData = {
   order_id?: unknown
@@ -21,18 +21,9 @@ const ok = () => new NextResponse(null, { status: 200 })
 const badRequest = () => new NextResponse(null, { status: 400 })
 const serverError = () => new NextResponse(null, { status: 500 })
 
-// Статус sandbox старі версії API повертали для тестових оплат; рахуємо його успіхом
-// лише з sandbox-ключами, щоб із бойовими він ніколи не перевів замовлення в paid
-function isSuccessStatus(status: string, publicKey: string): boolean {
-  return status === 'success' || (status === 'sandbox' && publicKey.startsWith('sandbox_'))
-}
-
 function isLegacySha1Signature(data: string, signature: string, privateKey: string): boolean {
   return createHash('sha1').update(privateKey + data + privateKey).digest('base64') === signature
 }
-
-// Гроші порівнюємо в копійках, щоб уникнути похибок float
-const toKopecks = (value: number) => Math.round(value * 100)
 
 export async function POST(request: Request) {
   const publicKey = process.env.LIQPAY_PUBLIC_KEY
@@ -83,90 +74,20 @@ export async function POST(request: Request) {
   }
 
   const { orderId, attempt } = parsedId
-  const liqpayStatus = payload.status
-  const paymentId = payload.payment_id
-  const supabase = createAdminClient()
 
-  const { data: order, error: readError } = await supabase
-    .from('orders')
-    .select('id, total_amount, payment_attempts')
-    .eq('id', orderId)
-    .maybeSingle()
-
-  if (readError) {
-    console.error('liqpay_callback: failed to read order', orderId, readError)
+  // Будь-який результат — 200; збій бази — 500, і LiqPay повторить
+  try {
+    await applyLiqpayResult({
+      orderId,
+      attempt,
+      status: payload.status,
+      amount: payload.amount,
+      currency: payload.currency,
+      paymentId: payload.payment_id,
+    }, publicKey)
+    return ok()
+  } catch (error) {
+    console.error('liqpay_callback: failed to apply result', orderId, error)
     return serverError()
   }
-
-  // Розбіжності з базою: повтор того самого callback не допоможе — 200 і гучний лог
-  if (!order) {
-    console.error('liqpay_callback: order not found', { orderId, liqpayStatus, paymentId })
-    return ok()
-  }
-  // Більший номер за payment_attempts ми не видавали; менший — запізнілий callback, приймаємо
-  if (attempt > order.payment_attempts) {
-    console.error('liqpay_callback: attempt exceeds payment_attempts', {
-      orderId, attempt, paymentAttempts: order.payment_attempts, paymentId,
-    })
-    return ok()
-  }
-  // amount може прийти числом чи рядком ("3199.00") — не вимагаємо typeof, а перетворюємо
-  const amount = Number(payload.amount)
-  if (
-    !Number.isFinite(amount) ||
-    toKopecks(amount) !== toKopecks(Number(order.total_amount)) ||
-    payload.currency !== 'UAH'
-  ) {
-    console.error('liqpay_callback: amount or currency mismatch', {
-      orderId, amount: payload.amount, currency: payload.currency, expected: order.total_amount, paymentId,
-    })
-    return ok()
-  }
-
-  if (isSuccessStatus(liqpayStatus, publicKey)) {
-    // Умовний перехід pending → paid: повторний callback чи паралельна спроба не зроблять нічого
-    const { data: paid, error: paidError } = await supabase
-      .from('orders')
-      .update({ status: 'paid', liqpay_status: 'success' })
-      .eq('id', orderId)
-      .eq('status', 'pending')
-      .select('id')
-
-    if (paidError) {
-      console.error('liqpay_callback: failed to mark order paid', orderId, paidError)
-      return serverError()
-    }
-
-    if (paid.length === 0) {
-      // Замовлення вже не pending (скасоване за таймаутом або оплачене іншою спробою):
-      // фіксуємо успішну оплату — гроші, ймовірно, треба повернути вручну (README)
-      const { error: lateError } = await supabase
-        .from('orders')
-        .update({ liqpay_status: 'success' })
-        .eq('id', orderId)
-      if (lateError) {
-        console.error('liqpay_callback: failed to record late success', orderId, lateError)
-        return serverError()
-      }
-      console.warn('liqpay_callback: success on non-pending order, check refund', {
-        orderId, attempt, paymentAttempts: order.payment_attempts, paymentId,
-      })
-    }
-
-    return ok()
-  }
-
-  // reversed (повернення коштів) перекриває success; решта — лише якщо там ще не success,
-  // щоб невдача іншої спроби не перезаписала успіх
-  let update = supabase.from('orders').update({ liqpay_status: liqpayStatus }).eq('id', orderId)
-  if (liqpayStatus !== 'reversed') {
-    update = update.or('liqpay_status.is.null,liqpay_status.neq.success')
-  }
-  const { error: statusError } = await update
-  if (statusError) {
-    console.error('liqpay_callback: failed to record status', orderId, statusError)
-    return serverError()
-  }
-
-  return ok()
 }
