@@ -1,10 +1,8 @@
 import { createAdminClient } from '@/shared/lib/supabase/admin'
 
 import { LIQPAY_API_VERSION, liqpaySign } from '../lib/liqpaySign'
-import { fetchLiqpayStatus } from '../lib/liqpayStatus'
 import { isFailedLiqpayStatus, isSuccessStatus } from '../lib/liqpayStatuses'
-import { parseLiqpayOrderId } from '../lib/parseLiqpayOrderId'
-import { applyLiqpayResult } from './applyLiqpayResult'
+import { reconcileOrder } from './reconcileOrder'
 import {
   LIQPAY_CALLBACK_PATH,
   PAYMENT_MAX_ATTEMPTS,
@@ -53,7 +51,7 @@ async function checkPreviousAttempt(params: StartPaymentParams): Promise<void> {
 
   const { data: order, error } = await supabase
     .from('orders')
-    .select('status, user_id, payment_attempts, liqpay_order_id')
+    .select('status, user_id')
     .eq('id', params.orderId)
     .maybeSingle()
 
@@ -64,35 +62,28 @@ async function checkPreviousAttempt(params: StartPaymentParams): Promise<void> {
   // Не знайдене чи чуже — відповідь дасть start_payment_attempt (order_not_found)
   if (!order || (order.user_id !== null && order.user_id !== params.userId)) return
   // Не pending — RPC однаково відмовить; скасоване з успішною оплатою знайде звірка
-  if (order.status !== 'pending' || order.payment_attempts === 0 || !order.liqpay_order_id) return
+  if (order.status !== 'pending') return
 
-  const parsedId = parseLiqpayOrderId(order.liqpay_order_id)
-  if (!parsedId || parsedId.orderId !== params.orderId) {
-    console.error('startPayment: unexpected liqpay_order_id', params.orderId, order.liqpay_order_id)
-    throw new PaymentError('payment_status_unavailable', 503)
+  const reconciled = await reconcileOrder(params.orderId, params.publicKey, params.privateKey)
+
+  switch (reconciled.kind) {
+    case 'skipped':
+    case 'not_found':
+      return
+    case 'unavailable':
+      throw new PaymentError('payment_status_unavailable', 503)
+    case 'applied':
+      // Навіть при 'ignored': LiqPay каже, що гроші списано, розбіжність уже в логах
+      if (isSuccessStatus(reconciled.liqpayStatus, params.publicKey)) {
+        throw new PaymentError('order_already_paid', 409)
+      }
+      if (isFailedLiqpayStatus(reconciled.liqpayStatus)) return
+      throw new PaymentError('payment_processing', 409)
+    default: {
+      const unhandled: never = reconciled
+      throw new Error(`Unhandled reconcile result: ${JSON.stringify(unhandled)}`)
+    }
   }
-
-  const result = await fetchLiqpayStatus(order.liqpay_order_id, params.publicKey, params.privateKey)
-
-  if (result.kind === 'unavailable') {
-    throw new PaymentError('payment_status_unavailable', 503)
-  }
-  if (result.kind === 'not_found' || isFailedLiqpayStatus(result.status)) return
-
-  if (isSuccessStatus(result.status, params.publicKey)) {
-    await applyLiqpayResult({
-      orderId: params.orderId,
-      attempt: parsedId.attempt,
-      status: result.status,
-      amount: result.amount,
-      currency: result.currency,
-      paymentId: result.paymentId,
-    }, params.publicKey)
-    // Навіть при 'ignored': LiqPay каже, що гроші списано, розбіжність уже в логах
-    throw new PaymentError('order_already_paid', 409)
-  }
-
-  throw new PaymentError('payment_processing', 409)
 }
 
 // LiqPay чекає UTC у форматі "YYYY-MM-DD HH:mm:ss"
