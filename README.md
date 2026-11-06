@@ -42,12 +42,14 @@ cloudflared tunnel --url http://localhost:3000
 `scripts/sendCallback.mjs` підписує callback твоїм sandbox-ключем і надсилає його на локальний webhook — так можна перевірити `pending → paid`, повтори й невідповідність суми без LiqPay:
 
 ```bash
-node --env-file=.env.local scripts/sendCallback.mjs <liqpay_order_id> <status> <amount> [--bad-signature]
+node --env-file=.env.local scripts/sendCallback.mjs <liqpay_order_id> <status> <amount> [--bad-signature] [--payment-id=<id>]
 ```
 
 `liqpay_order_id` — значення з `orders.liqpay_order_id` (`<uuid замовлення>-<номер спроби>`).
 
-### Перевірка LigPay статусу
+Без `--payment-id` кожен запуск — новий платіж (`Date.now()`). Щоб імітувати повтор того самого callback, передай `payment_id`, який скрипт надрукував першого разу: повтор має пройти без `check refund` у логах. Пиши через `=`, не через пробіл.
+
+### Перевірка статусу в LiqPay
 
 Виконання скрипта `scripts/checkStatus.mjs` показує, що LiqPay знає про оплату, незалежно від того, чи дійшов callback. У його відповіді є персональні дані платника (ім'я, IP, маска картки), тож не вставляйте її в issue чи публічні чати.
 
@@ -55,6 +57,32 @@ node --env-file=.env.local scripts/sendCallback.mjs <liqpay_order_id> <status> <
 node --env-file=.env.local scripts/checkStatus.mjs <liqpay_order_id>
 ```
 
+### Звірка оплат
+
+`POST /api/cron/reconcile-payments` питає LiqPay про замовлення, де спроба оплати була, а фінального статусу немає (наприклад, гість закрив сторінку, а callback не дійшов), і записує відповідь так само, як callback. Бере `pending` віком від `RECONCILE_MIN_AGE_MINUTES` і нещодавно скасовані до `RECONCILE_MAX_AGE_MINUTES` (`src/features/checkout/config/payment.ts`).
+
+Потрібен `CRON_SECRET` у `.env.local` (команда для генерації — у `.env.example`). Без нього роут відповідає 500, з неправильним секретом — 401. Запуск вручну:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/cron/reconcile-payments -Headers @{ Authorization = "Bearer <CRON_SECRET>" }
+```
+
+```bash
+curl -X POST http://localhost:3000/api/cron/reconcile-payments -H "Authorization: Bearer <CRON_SECRET>"
+```
+
+Відповідь — підсумок запуску (`checked`, `paid`, `lateSuccess`, `recorded`, `notFound`, ...); той самий рядок пишеться в лог сервера.
+
 ## Відомі ризики
 
-- **Оплата після скасування за таймаутом.** Резерв `card_online` скасовується через 30 хвилин без оплати. Якщо callback LiqPay про успішну оплату прийде вже після цього, статус лишається `cancelled`, а успішний `liqpay_status` записується в замовлення. Кошти треба повернути вручну; адмінка має показувати такі замовлення (скасовані з успішною оплатою).
+- **Оплата після скасування за таймаутом.** Резерв `card_online` скасовується через 30 хвилин без оплати. Якщо оплата пройшла вже після цього, статус лишається `cancelled`, а в замовлення записується успішний `liqpay_status`. Такі випадки знаходить і callback, і звірка — навіть якщо callback не прийшов зовсім. `liqpay_payment_id` відрізняє справжню подвійну оплату від повтору того самого callback, тож попередження тепер лише справжні. Кошти однаково треба повернути вручну: шукай у логах `check refund`. Адмінка має показувати такі замовлення (скасовані з успішною оплатою).
+
+## Відкладене
+
+- **`orders.liqpay_checked_at` для звірки.** Зараз `/api/cron/reconcile-payments` бере замовлення за `created_at` у вікні `RECONCILE_MAX_AGE_MINUTES`, pending першими. Якщо замовлень у вікні стане більше за `RECONCILE_BATCH_LIMIT`, частина не перевірятиметься. Надійніше: записувати час останньої перевірки й вибирати за ним, щоб перевірене замовлення ставало в кінець черги.
+- **`maxDuration` для звірки.** У найгіршому випадку запуск триває `RECONCILE_BATCH_LIMIT` × 5 с таймауту LiqPay = 100 с. При деплої на Vercel задати `export const maxDuration` у роуті або зменшити ліміт.
+- **«Сховати» на банері неоплаченого замовлення.** Зараз банер зникає, лише коли замовлення оплачене, скасоване або його вже не можна оплатити.
+- **Коротший термін спроби оплати.** `expired_date` кожної спроби — кінець усього вікна оплати, тож форма старої спроби лишається робочою, коли вже відкрито нову, і можлива подвійна оплата.
+- **Email гостя.** Форма збирає лише телефон: гостю нема куди надіслати підтвердження чи посилання на статус замовлення.
+- **Кеш Нової Пошти.** Список відділень міста запитується в НП і в автокомпліті, і при кожному створенні замовлення (перевірка відділення). Варто кешувати за `cityRef`.
+- **Назви НП у `request_hash`.** `create_order` хешує `np_city_name` і `np_branch_name`, а їх сервер тепер бере з НП. Якщо НП перейменує відділення між повторами з тим самим ключем, повтор отримає `idempotency_conflict`. Хешувати лише ref.
