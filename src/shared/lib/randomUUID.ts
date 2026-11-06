@@ -1,0 +1,15 @@
+// UUID v4 для браузера. crypto.randomUUID() є лише в secure context (HTTPS або localhost),
+// а dev-сайт може відкриватись як http://site.local — LiqPay блокує оплату з localhost.
+// crypto.getRandomValues() доступний і поза secure context, тож збираємо UUID з нього
+export function randomUUID(): string {
+  if (typeof crypto.randomUUID === 'function' && globalThis.isSecureContext !== false) {
+    return crypto.randomUUID()
+  }
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6] & 0x0f) | 0x40 // версія 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80 // варіант RFC 4122
+
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}

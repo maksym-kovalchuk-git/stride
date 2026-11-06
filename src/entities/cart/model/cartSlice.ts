@@ -1,11 +1,13 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import type { CartItem } from './types'
+import { MAX_QUANTITY } from '@/shared/config/cart'
 
 export type CartState = {
   items: CartItem[]
 }
 
-export const MAX_QUANTITY = 10
+// Селектор приймає лише свою частину стану — нижчим шарам не потрібен RootState з app
+export const selectCartItems = (state: { cart: CartState }) => state.cart.items
 
 function isAddable(item: CartItem): boolean {
   return item.quantity < item.stock && item.quantity < MAX_QUANTITY

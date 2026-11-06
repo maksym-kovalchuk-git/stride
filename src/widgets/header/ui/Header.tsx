@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/shared/lib/supabase/server'
 import { SignOutButton } from '@/features/auth-by-email/ui/SignOutButton'
-import { CartCounter } from '@/features/add-to-cart/ui/CartCounter'
+import { CartCounter } from '@/entities/cart/ui/CartCounter'
 
 export async function Header() {
   const supabase = await createClient()

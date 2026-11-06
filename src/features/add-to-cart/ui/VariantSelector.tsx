@@ -4,8 +4,9 @@ import { useState, useMemo } from 'react'
 import { useDispatch } from 'react-redux'
 
 import type { ProductWithRelations } from '@/entities/product/model/types'
+import { getVariantPrice } from '@/entities/product/model/getVariantPrice'
 
-import { addItem } from '@/features/add-to-cart/model/cartSlice'
+import { addItem } from '@/entities/cart/model/cartSlice'
 
 type VariantSelectorProps = {
   product: ProductWithRelations
@@ -65,7 +66,7 @@ export function VariantSelector({ product }: VariantSelectorProps) {
       image_url: product.images[0]?.url || '',
       size: selectedVariant.size,
       color: selectedVariant.color,
-      price: selectedVariant.price_override ?? product.base_price,
+      price: getVariantPrice(selectedVariant, product),
       stock: selectedVariant.stock,
     }
 

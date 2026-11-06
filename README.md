@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Локальна розробка
 
-## Getting Started
+1. Скопіюй `.env.example` у `.env.local` і заповни ключі. Для LiqPay бери тестові (`sandbox_…`): з ними реальних списань немає.
+2. Запусти dev-сервер: `npm run dev`.
 
-First, run the development server:
+### Тестова оплата LiqPay: не з localhost
+
+LiqPay блокує оплату, якщо форму відправлено з `localhost`. `POST /api/3/checkout` проходить і сторінка оплати відкривається, але далі її запити (`apiweb/checkout/prepare`, `apiwait`, а часом і власні `/checkout/assets/*`) повертають `403 Forbidden` зі сторінкою nginx. Підпис і параметри тут ні до чого — це правило захисту мережі LiqPay (підтверджено підтримкою).
+
+Рішення — відкривати сайт під іншим ім'ям, що веде на твій комп'ютер:
+
+1. Додай у кінець файлу hosts рядок `127.0.0.1 site.local`:
+   - Windows: `C:\Windows\System32\drivers\etc\hosts` (редактор запусти від імені адміністратора);
+   - macOS / Linux: `sudo nano /etc/hosts`.
+2. Перевір: `ping site.local` відповідає з `127.0.0.1`.
+3. Відкривай **`http://site.local:3000`**, а не `localhost:3000`. Домен уже дозволено в `allowedDevOrigins` (`next.config.ts`). Cookies і кошик у нього свої, тож увійти й додати товари доведеться заново.
+
+Альтернатива без hosts — відкривати сайт за адресою тунелю (див. нижче).
+
+### Callback LiqPay
+
+LiqPay шле результат оплати на `server_url`, а до локальної машини ззовні не достукатися, тож потрібен тунель:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cloudflared tunnel --url http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Отриману адресу `https://….trycloudflare.com` впиши в `.env.local` як `APP_URL` (чистий origin, без шляху) і перезапусти `npm run dev`. Швидкий тунель міняє адресу при кожному запуску — оновлюй `APP_URL`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Тестові картки
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Будь-який CVV і майбутній термін дії, наприклад `12/30`. Повний список — у [документації LiqPay](https://www.liqpay.ua/uk/doc/api/testing).
 
-## Learn More
+| Картка | Результат |
+|---|---|
+| `4242 4242 4242 4242` | успішна оплата |
+| `4000 0000 0000 0002` | відмова, код `limit` |
+| `4000 0000 0000 9995` | відмова, код `9859` |
 
-To learn more about Next.js, take a look at the following resources:
+### Callback без справжньої оплати
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`scripts/sendCallback.mjs` підписує callback твоїм sandbox-ключем і надсилає його на локальний webhook — так можна перевірити `pending → paid`, повтори й невідповідність суми без LiqPay:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+node --env-file=.env.local scripts/sendCallback.mjs <liqpay_order_id> <status> <amount> [--bad-signature] [--payment-id=<id>]
+```
 
-## Deploy on Vercel
+`liqpay_order_id` — значення з `orders.liqpay_order_id` (`<uuid замовлення>-<номер спроби>`).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Без `--payment-id` кожен запуск — новий платіж (`Date.now()`). Щоб імітувати повтор того самого callback, передай `payment_id`, який скрипт надрукував першого разу: повтор має пройти без `check refund` у логах. Пиши через `=`, не через пробіл.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Перевірка статусу в LiqPay
+
+Виконання скрипта `scripts/checkStatus.mjs` показує, що LiqPay знає про оплату, незалежно від того, чи дійшов callback. У його відповіді є персональні дані платника (ім'я, IP, маска картки), тож не вставляйте її в issue чи публічні чати.
+
+```bash
+node --env-file=.env.local scripts/checkStatus.mjs <liqpay_order_id>
+```
+
+### Звірка оплат
+
+`POST /api/cron/reconcile-payments` питає LiqPay про замовлення, де спроба оплати була, а фінального статусу немає (наприклад, гість закрив сторінку, а callback не дійшов), і записує відповідь так само, як callback. Бере `pending` віком від `RECONCILE_MIN_AGE_MINUTES` і нещодавно скасовані до `RECONCILE_MAX_AGE_MINUTES` (`src/features/checkout/config/payment.ts`).
+
+Потрібен `CRON_SECRET` у `.env.local` (команда для генерації — у `.env.example`). Без нього роут відповідає 500, з неправильним секретом — 401. Запуск вручну:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/cron/reconcile-payments -Headers @{ Authorization = "Bearer <CRON_SECRET>" }
+```
+
+```bash
+curl -X POST http://localhost:3000/api/cron/reconcile-payments -H "Authorization: Bearer <CRON_SECRET>"
+```
+
+Відповідь — підсумок запуску (`checked`, `paid`, `lateSuccess`, `recorded`, `notFound`, ...); той самий рядок пишеться в лог сервера.
+
+## Відомі ризики
+
+- **Оплата після скасування за таймаутом.** Резерв `card_online` скасовується через 30 хвилин без оплати. Якщо оплата пройшла вже після цього, статус лишається `cancelled`, а в замовлення записується успішний `liqpay_status`. Такі випадки знаходить і callback, і звірка — навіть якщо callback не прийшов зовсім. `liqpay_payment_id` відрізняє справжню подвійну оплату від повтору того самого callback, тож попередження тепер лише справжні. Кошти однаково треба повернути вручну: шукай у логах `check refund`. Адмінка має показувати такі замовлення (скасовані з успішною оплатою).
+
+## Відкладене
+
+- **`orders.liqpay_checked_at` для звірки.** Зараз `/api/cron/reconcile-payments` бере замовлення за `created_at` у вікні `RECONCILE_MAX_AGE_MINUTES`, pending першими. Якщо замовлень у вікні стане більше за `RECONCILE_BATCH_LIMIT`, частина не перевірятиметься. Надійніше: записувати час останньої перевірки й вибирати за ним, щоб перевірене замовлення ставало в кінець черги.
+- **`maxDuration` для звірки.** У найгіршому випадку запуск триває `RECONCILE_BATCH_LIMIT` × 5 с таймауту LiqPay = 100 с. При деплої на Vercel задати `export const maxDuration` у роуті або зменшити ліміт.
+- **«Сховати» на банері неоплаченого замовлення.** Зараз банер зникає, лише коли замовлення оплачене, скасоване або його вже не можна оплатити.
+- **Коротший термін спроби оплати.** `expired_date` кожної спроби — кінець усього вікна оплати, тож форма старої спроби лишається робочою, коли вже відкрито нову, і можлива подвійна оплата.
+- **Email гостя.** Форма збирає лише телефон: гостю нема куди надіслати підтвердження чи посилання на статус замовлення.
+- **Кеш Нової Пошти.** Список відділень міста запитується в НП і в автокомпліті, і при кожному створенні замовлення (перевірка відділення). Варто кешувати за `cityRef`.
+- **Назви НП у `request_hash`.** `create_order` хешує `np_city_name` і `np_branch_name`, а їх сервер тепер бере з НП. Якщо НП перейменує відділення між повторами з тим самим ключем, повтор отримає `idempotency_conflict`. Хешувати лише ref.

@@ -2,10 +2,10 @@
 
 import { useSelector } from 'react-redux'
 import Link from 'next/link'
-import type { RootState } from '@/shared/store/store'
+import { selectCartItems } from '../model/cartSlice'
 
 export function CartCounter() {
-  const items = useSelector((state: RootState) => state.cart.items)
+  const items = useSelector(selectCartItems)
 
   return (
     <Link href="/cart">

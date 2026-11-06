@@ -2,14 +2,15 @@
 
 import { useDispatch, useSelector } from 'react-redux'
 
-import { increaseQuantity, decreaseQuantity, removeItem, clearCart, MAX_QUANTITY } from '@/features/add-to-cart/model/cartSlice'
+import { increaseQuantity, decreaseQuantity, removeItem, clearCart, selectCartItems } from '@/entities/cart/model/cartSlice'
+import { MAX_QUANTITY } from '@/shared/config/cart'
+import { PendingOrderBanner } from '@/features/checkout/ui/PendingOrderBanner'
 
-import type { RootState } from '@/shared/store/store'
 import Link from 'next/link'
 
 
 export default function CartPage() {
-  const items = useSelector((state: RootState) => state.cart.items)
+  const items = useSelector(selectCartItems)
   const dispatch = useDispatch()
 
   const totalPrice = items.reduce((sum, item) => {
@@ -19,6 +20,7 @@ export default function CartPage() {
   return (
     <div style={{ padding: 40 }}>
       <h1>Кошик</h1>
+      <PendingOrderBanner />
         {items.length === 0 ? (
           <p>Кошик порожній</p>
         ) : (
